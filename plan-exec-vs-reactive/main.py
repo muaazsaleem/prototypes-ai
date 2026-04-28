@@ -4,9 +4,9 @@ Prototype: Plan-and-Execute vs Reactive (ReAct) Agent
 
 This prototype demonstrates two different agentic architectures handling an intense,
 multi-layered procurement task. The catalog features cascading failures (out-of-stock items
-whose alternatives are ALSO out of stock). 
+whose alternatives are ALSO out of stock).
 
-ReAct adapts dynamically through an intense loop of discovery and correction. 
+ReAct adapts dynamically through an intense loop of discovery and correction.
 Plan-and-Execute generates a rigid plan that shatters upon contact with reality.
 
 Updated to use the modern google-genai SDK.
@@ -20,35 +20,46 @@ from typing import Any
 
 from google import genai
 from google.genai import types
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
+from rich.text import Text
 
 console = Console()
 # The new SDK uses a Client object instead of global configuration
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-2.0-flash"
 
 # ─── Mock Product Catalog (Intense Scenario) ──────────────────────────────────
 CATALOG: dict[str, dict] = {
-    "m3_macbook_pro": {"price": 1999.99, "in_stock": False},      # OOS
-    "m2_macbook_pro": {"price": 1799.99, "in_stock": False},      # OOS
-    "m1_macbook_pro": {"price": 1499.99, "in_stock": True},       # IN STOCK
-    "32_inch_4k_monitor": {"price": 699.99, "in_stock": False},   # OOS
-    "27_inch_4k_monitor": {"price": 499.99, "in_stock": True},    # IN STOCK
-    "standing_desk": {"price": 399.99, "in_stock": True},         # IN STOCK
-    "ergonomic_chair": {"price": 249.99, "in_stock": True},       # IN STOCK
+    "m3_macbook_pro": {"price": 1999.99, "in_stock": False},  # OOS
+    "m2_macbook_pro": {"price": 1799.99, "in_stock": False},  # OOS
+    "m1_macbook_pro": {"price": 1499.99, "in_stock": True},  # IN STOCK
+    "32_inch_4k_monitor": {"price": 699.99, "in_stock": False},  # OOS
+    "27_inch_4k_monitor": {"price": 499.99, "in_stock": True},  # IN STOCK
+    "standing_desk": {"price": 399.99, "in_stock": True},  # IN STOCK
+    "ergonomic_chair": {"price": 249.99, "in_stock": True},  # IN STOCK
     "mechanical_keyboard": {"price": 129.99, "in_stock": False},  # OOS
-    "membrane_keyboard": {"price": 29.99, "in_stock": True},      # IN STOCK
-    "wireless_mouse": {"price": 49.99, "in_stock": True},         # IN STOCK
+    "membrane_keyboard": {"price": 29.99, "in_stock": True},  # IN STOCK
+    "wireless_mouse": {"price": 49.99, "in_stock": True},  # IN STOCK
 }
 
 # ─── Tool Implementations ─────────────────────────────────────────────────────
 
 
 def get_item_info(item: str) -> dict:
-    """Returns price and availability for a specific item from the catalog."""
+    """Returns price and availability for a specific item from the catalog.
+
+    Args:
+        item: The requested product name.
+
+    Returns:
+        A dictionary containing item name, price, and stock status.
+
+    Edge cases:
+        Returns an error dictionary if the item is entirely missing from the catalog.
+    """
     key = item.lower().replace(" ", "_").replace("-", "_")
     if key not in CATALOG:
         return {"error": f"'{item}' not found in catalog"}
@@ -61,7 +72,17 @@ def get_item_info(item: str) -> dict:
 
 
 def search_alternatives(item: str) -> dict:
-    """Returns a list of alternative product IDs for an out-of-stock item."""
+    """Returns a list of alternative product IDs for an out-of-stock item.
+
+    Args:
+        item: The out-of-stock product name.
+
+    Returns:
+        A dictionary containing the original item and a list of suggested alternatives.
+
+    Edge cases:
+        Returns an empty list for the alternatives if no mapping exists for the item.
+    """
     alt_map: dict[str, list] = {
         "m3_macbook_pro": ["m2_macbook_pro", "m1_macbook_pro"],
         "32_inch_4k_monitor": ["27_inch_4k_monitor"],
@@ -73,7 +94,18 @@ def search_alternatives(item: str) -> dict:
 
 
 def calculate_total(items_json: str) -> dict:
-    """Calculates the total cost and provides an itemized breakdown."""
+    """Calculates the total cost and provides an itemized breakdown.
+
+    Args:
+        items_json: A JSON string containing an array of objects with item, quantity, and price.
+
+    Returns:
+        A dictionary containing the total cost, breakdown, and warnings if applicable.
+
+    Edge cases:
+        Returns an error dictionary if the JSON fails to parse.
+        Skips items with a missing or null price (e.g., OOS items).
+    """
     try:
         items = json.loads(items_json)
         total, breakdown, warnings = 0.0, [], []
@@ -104,7 +136,15 @@ TOOL_MAP = {
 
 
 def dispatch(name: str, args: dict) -> Any:
-    """Executes a tool function by name with the provided arguments."""
+    """Executes a tool function by name with the provided arguments.
+
+    Args:
+        name: The name of the tool function to call.
+        args: A dictionary of keyword arguments for the function.
+
+    Returns:
+        The dictionary response from the invoked tool, or an error dictionary.
+    """
     fn = TOOL_MAP.get(name)
     return fn(**args) if fn else {"error": f"Unknown tool: {name}"}
 
@@ -113,7 +153,14 @@ def dispatch(name: str, args: dict) -> Any:
 
 
 def _make_tools(include_search_alternatives: bool) -> list[types.Tool]:
-    """Creates a list of Tool objects for the new SDK."""
+    """Creates a list of Tool objects for the new SDK.
+
+    Args:
+        include_search_alternatives: Whether the search_alternatives tool should be available.
+
+    Returns:
+        A list containing a single types.Tool wrapping the function declarations.
+    """
     decls = [
         types.FunctionDeclaration(
             name="get_item_info",
@@ -174,12 +221,13 @@ def _make_tools(include_search_alternatives: bool) -> list[types.Tool]:
 @dataclass
 class Stats:
     """Tracks execution metrics for comparing agent performance."""
+
     name: str
     tool_calls: int = 0
     llm_calls: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
-    wrong_turns: int = 0  
+    wrong_turns: int = 0
     success: bool = False
     answer: str = ""
 
@@ -190,7 +238,15 @@ class Stats:
 
 
 def _accum_tokens(stats: Stats, response: Any) -> None:
-    """Updates stats with token usage information from a model response."""
+    """Updates stats with token usage information from a model response.
+
+    Args:
+        stats: The Stats object to update in-place.
+        response: The model response containing metadata.
+
+    Side effects:
+        Mutates the stats object token counts.
+    """
     meta = getattr(response, "usage_metadata", None)
     if meta:
         stats.input_tokens += getattr(meta, "prompt_token_count", 0) or 0
@@ -201,9 +257,16 @@ def _accum_tokens(stats: Stats, response: Any) -> None:
 
 
 def _extract_response_content(response: Any) -> str:
-    """Formats a raw Gemini response (text and/or tool calls) into a single string."""
+    """Formats a raw Gemini response (text and/or tool calls) into a single string.
+
+    Args:
+        response: The raw response object from the Gemini API.
+
+    Returns:
+        A concatenated string of the response text and any requested tool calls.
+    """
     res_parts = []
-    # The new SDK response.candidates[0].content.parts is the structure
+    # Loop over all content parts returned by the model
     if response.candidates:
         for p in response.candidates[0].content.parts:
             if p.text:
@@ -213,12 +276,21 @@ def _extract_response_content(response: Any) -> str:
                     args = dict(p.function_call.args)
                 except Exception:
                     args = str(p.function_call.args)
-                res_parts.append(f"ToolCall({p.function_call.name}, {json.dumps(args, default=str)})")
+                res_parts.append(
+                    f"ToolCall({p.function_call.name}, {json.dumps(args, default=str)})"
+                )
     return " ".join(res_parts)
 
 
 def _extract_tool_content(parts_back: list[types.Part]) -> str:
-    """Formats tool results into a single string for display."""
+    """Formats tool results into a single string for display.
+
+    Args:
+        parts_back: A list of Part objects containing function responses.
+
+    Returns:
+        A formatted string describing the tool execution results.
+    """
     parts = []
     for p in parts_back:
         if p.function_response:
@@ -226,37 +298,93 @@ def _extract_tool_content(parts_back: list[types.Part]) -> str:
                 res = dict(p.function_response.response)
             except Exception:
                 res = str(p.function_response.response)
-            parts.append(f"ToolResult({p.function_response.name}, {json.dumps(res, default=str)})")
+            parts.append(
+                f"ToolResult({p.function_response.name}, {json.dumps(res, default=str)})"
+            )
     return " ".join(parts)
 
 
 def _log_system(instruction: str) -> None:
-    """Logs the initial system instruction cleanly."""
-    console.print(Rule("[dim]System Instruction[/dim]", style="dim"))
-    wrapped = textwrap.fill(instruction, width=88, subsequent_indent="           ")
-    console.print(f"  [dim]system[/dim]:  [dim]{wrapped}[/dim]")
+    """Logs the initial system instruction cleanly in a grey panel.
+
+    Args:
+        instruction: The system prompt text.
+
+    Side effects:
+        Prints a formatted rich Panel to the terminal.
+    """
+    wrapped = textwrap.fill(instruction, width=82, subsequent_indent="        ")
+    content = Text.assemble(("SYSTEM: ", "dim"), (wrapped, "dim"))
+
+    console.print(
+        Panel(
+            content,
+            title="[bold bright_black]Model Input[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+        )
+    )
     console.print()
 
 
 def _log_input(role: str, content: str) -> None:
-    """Logs the prompt or tool result being sent TO the model."""
-    console.print(Rule(f"[bold blue]Model Input ({role})[/bold blue]", style="blue"))
+    """Logs the prompt or tool result being sent to the model in a grey panel.
+
+    Args:
+        role: The speaker role (e.g., 'user', 'tool').
+        content: The text content being sent to the model.
+
+    Side effects:
+        Prints a formatted rich Panel to the terminal.
+    """
     if role == "user":
-        label = "[bold blue]user[/bold blue]"
-        color = "blue"
+        label_style = "bold blue"
+        content_style = "blue"
     else:
-        label = "[bold yellow]tool[/bold yellow]"
-        color = "yellow"
-    
-    wrapped = textwrap.fill(content, width=88, subsequent_indent="            ")
-    console.print(f"  {label}:    [{color}]{wrapped}[/{color}]")
+        label_style = "bold yellow"
+        content_style = "yellow"
+
+    indent = " " * (len(role) + 2)
+    wrapped = textwrap.fill(content, width=82, subsequent_indent=indent)
+
+    content_element = Text.assemble(
+        (f"{role.upper()}: ", label_style), (wrapped, content_style)
+    )
+
+    console.print(
+        Panel(
+            content_element,
+            title="[bold bright_black]Model Input[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+        )
+    )
     console.print()
 
 
 def _log_response(content: str) -> None:
-    """Logs the verbatim response returned FROM the model."""
-    console.print(Rule("[bold green]Model Response[/bold green]", style="green"))
-    console.print(f"[italic]{content}[/italic]", highlight=False)
+    """Logs the verbatim response returned from the model in a grey panel.
+
+    Args:
+        content: The formatted string response from the model.
+
+    Side effects:
+        Prints a formatted rich Panel to the terminal.
+    """
+    wrapped_response = textwrap.fill(content, width=82, subsequent_indent="           ")
+    response_content = Text.assemble(
+        ("ASSISTANT: ", "bold green"), (wrapped_response, "italic")
+    )
+
+    console.print(
+        Panel(
+            response_content,
+            title="[bold bright_black]Model Response[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+            highlight=False,
+        )
+    )
     console.print()
 
 
@@ -264,12 +392,25 @@ def _log_response(content: str) -> None:
 
 
 def _run_tool_calls(response: Any, stats: Stats) -> tuple[list[types.Part], str]:
-    """Extracts and executes tool calls from a model response."""
+    """Extracts and executes requested tool calls from a model response.
+
+    Args:
+        response: The model response object containing potential function calls.
+        stats: The Stats object to track tool invocations and wrong turns.
+
+    Returns:
+        A tuple of (list of Part objects containing tool results, optional final text).
+
+    Side effects:
+        Invokes local functions and mutates the stats object.
+    """
     if not response.candidates:
         return [], ""
-        
+
     parts = response.candidates[0].content.parts
-    fn_calls = [p.function_call for p in parts if p.function_call and p.function_call.name]
+    fn_calls = [
+        p.function_call for p in parts if p.function_call and p.function_call.name
+    ]
 
     if not fn_calls:
         text = " ".join(p.text for p in parts if p.text)
@@ -281,7 +422,7 @@ def _run_tool_calls(response: Any, stats: Stats) -> tuple[list[types.Part], str]
         result = dispatch(name, args)
         stats.tool_calls += 1
 
-        # An OOS result is a "wrong turn"
+        # An out-of-stock item is tracked as a wrong turn metric
         if isinstance(result, dict) and result.get("in_stock") is False:
             stats.wrong_turns += 1
 
@@ -299,25 +440,37 @@ def _run_tool_calls(response: Any, stats: Stats) -> tuple[list[types.Part], str]
 
 
 def run_react(task: str, stats: Stats) -> str:
-    """Executes the task using the highly adaptive ReAct architecture."""
+    """Executes the task using the adaptive ReAct architecture loop.
+
+    The model dynamically calls tools, assesses results, and adjusts its approach
+    if items are out of stock.
+
+    Args:
+        task: The overall request string.
+        stats: The Stats object to track iterations and metrics.
+
+    Returns:
+        The final response string containing the calculation or failure notice.
+
+    Side effects:
+        Makes multiple API calls and prints chat logs.
+    """
     sys_inst = (
         "You are a procurement assistant. Use get_item_info to look up prices. "
         "If an item is out of stock, call search_alternatives to get substitute names, "
         "then look up those substitutes until you find one that is IN STOCK. "
         "Use the cheapest available option. Finish with calculate_total."
     )
-    
+
     config = types.GenerateContentConfig(
-        system_instruction=sys_inst,
-        tools=_make_tools(include_search_alternatives=True)
+        system_instruction=sys_inst, tools=_make_tools(include_search_alternatives=True)
     )
-    
-    # The new SDK uses client.chats.create
+
     chat = client.chats.create(model=MODEL, config=config)
-    
+
     _log_system(sys_inst)
     _log_input("user", task)
-    
+
     response = chat.send_message(task)
     stats.llm_calls += 1
     _accum_tokens(stats, response)
@@ -329,10 +482,10 @@ def run_react(task: str, stats: Stats) -> str:
             stats.answer = final
             stats.success = True
             break
-            
+
         tool_content = _extract_tool_content(parts_back)
         _log_input("tool", tool_content)
-        
+
         response = chat.send_message(parts_back)
         stats.llm_calls += 1
         _accum_tokens(stats, response)
@@ -345,32 +498,45 @@ def run_react(task: str, stats: Stats) -> str:
 
 
 def _generate_plan(task: str, stats: Stats) -> list[str]:
-    """Generates a rigid step-by-step plan assuming everything goes perfectly."""
+    """Generates a rigid step-by-step plan assuming a perfect happy path.
+
+    Args:
+        task: The overall request string.
+        stats: The Stats object tracking LLM calls.
+
+    Returns:
+        A list of strings representing the sequence of plan steps.
+
+    Side effects:
+        Makes an API call and prints the interaction.
+    """
     sys_inst = (
         "You are a planning agent. Output ONLY a JSON array of step strings. "
         "Assume ALL items are perfectly in stock. Plan the direct happy path only. "
         "Do NOT include conditional steps, alternatives, or stock checking logic. "
         "Output only the JSON array — no markdown, no explanation."
     )
-    
+
     prompt = f"Task: {task}\n\nOutput a JSON array of steps to complete this task."
-    
+
     _log_system(sys_inst)
     _log_input("user", prompt)
-    
+
     response = client.models.generate_content(
         model=MODEL,
         contents=prompt,
-        config=types.GenerateContentConfig(system_instruction=sys_inst)
+        config=types.GenerateContentConfig(system_instruction=sys_inst),
     )
-    
+
     stats.llm_calls += 1
     _accum_tokens(stats, response)
-    
+
     raw = ""
     if response.candidates:
-        raw = "".join(p.text for p in response.candidates[0].content.parts if p.text).strip()
-    
+        raw = "".join(
+            p.text for p in response.candidates[0].content.parts if p.text
+        ).strip()
+
     _log_response(raw)
 
     for fence in ("```json", "```"):
@@ -386,24 +552,36 @@ def _generate_plan(task: str, stats: Stats) -> list[str]:
 
 
 def _execute_step(step: str, context: str, stats: Stats) -> str:
-    """Executes a single step from the pre-defined plan. Fails silently on OOS."""
+    """Executes a single rigid step from the plan without adapting to failure.
+
+    Args:
+        step: The current step string from the plan.
+        context: The concatenated results of all prior steps.
+        stats: The Stats object tracking tool calls and metrics.
+
+    Returns:
+        The text response generated by the model for this isolated step.
+
+    Side effects:
+        Makes API calls and prints chat logs.
+    """
     sys_inst = (
         "You are an executor. Execute ONLY the specific step you are given. "
         "Do not handle scenarios not stated in your step. "
         "Report the result concisely."
     )
-    
+
     config = types.GenerateContentConfig(
         system_instruction=sys_inst,
-        tools=_make_tools(include_search_alternatives=False)
+        tools=_make_tools(include_search_alternatives=False),
     )
-    
+
     chat = client.chats.create(model=MODEL, config=config)
     prompt = f"Prior context:\n{context or '(none)'}\n\nYour step: {step}"
-    
+
     _log_system(sys_inst)
     _log_input("user", prompt)
-    
+
     response = chat.send_message(prompt)
     stats.llm_calls += 1
     _accum_tokens(stats, response)
@@ -413,11 +591,11 @@ def _execute_step(step: str, context: str, stats: Stats) -> str:
         parts_back, final = _run_tool_calls(response, stats)
         if final:
             return final
-            
+
         tool_content = _extract_tool_content(parts_back)
         if tool_content:
             _log_input("tool", tool_content)
-        
+
         response = chat.send_message(parts_back)
         stats.llm_calls += 1
         _accum_tokens(stats, response)
@@ -427,9 +605,25 @@ def _execute_step(step: str, context: str, stats: Stats) -> str:
 
 
 def run_plan_exec(task: str, stats: Stats) -> str:
-    """Executes the rigid plan linearly, accumulating errors along the way."""
+    """Executes the task using a brittle Plan-and-Execute pipeline.
+
+    Fails when encountering out-of-stock items because it lacks the ability
+    to formulate alternatives dynamically.
+
+    Args:
+        task: The overall request string.
+        stats: The Stats object tracking iterations and metrics.
+
+    Returns:
+        The concatenated string of all completed step results.
+
+    Side effects:
+        Makes API calls and prints interaction headers.
+    """
     console.print()
-    console.print("[bold cyan]-- Phase 1 — Plan -------------------------------------[/bold cyan]")
+    console.print(
+        "[bold cyan]-- Phase 1 — Plan -------------------------------------[/bold cyan]"
+    )
     plan = _generate_plan(task, stats)
 
     if not plan:
@@ -437,17 +631,21 @@ def run_plan_exec(task: str, stats: Stats) -> str:
         return stats.answer
 
     console.print()
-    console.print("[bold cyan]-- Phase 2 — Execute ----------------------------------[/bold cyan]")
+    console.print(
+        "[bold cyan]-- Phase 2 — Execute ----------------------------------[/bold cyan]"
+    )
     ctx_parts: list[str] = []
 
     for i, step in enumerate(plan, 1):
-        console.print(f"\n[bold magenta]Executing Step {i}/{len(plan)}:[/bold magenta] {step}")
+        console.print(
+            f"\n[bold magenta]Executing Step {i}/{len(plan)}:[/bold magenta] {step}"
+        )
         context = "\n".join(ctx_parts) or "(none)"
         result = _execute_step(step, context, stats)
         ctx_parts.append(f"Step {i} result: {result[:200]}")
 
     stats.answer = "\n".join(ctx_parts)
-    # Success is impossible if OOS was hit, as P&E lacks alternatives
+    # Success is impossible if an OOS item was hit, as P&E lacks alternatives
     stats.success = stats.wrong_turns == 0
     return stats.answer
 
@@ -456,7 +654,16 @@ def run_plan_exec(task: str, stats: Stats) -> str:
 
 
 def _cmp(a: int, b: int, lower_is_better: bool = True) -> tuple[str, str]:
-    """Returns a colored string tuple for comparing two numeric metrics."""
+    """Compares two numeric metrics and colors them to indicate the winner.
+
+    Args:
+        a: The first metric (ReAct).
+        b: The second metric (Plan and Execute).
+        lower_is_better: Boolean flagging if lower numbers are desirable.
+
+    Returns:
+        A tuple of styled strings representing a and b.
+    """
     if a == b:
         return str(a), str(b)
     if (a < b) == lower_is_better:
@@ -465,7 +672,15 @@ def _cmp(a: int, b: int, lower_is_better: bool = True) -> tuple[str, str]:
 
 
 def print_comparison(react: Stats, pe: Stats) -> None:
-    """Prints a comparison table of metrics between both agent architectures."""
+    """Prints a comparison table of execution metrics between both architectures.
+
+    Args:
+        react: The populated Stats object for the ReAct run.
+        pe: The populated Stats object for the Plan-and-Execute run.
+
+    Side effects:
+        Outputs a formatted Table to the terminal.
+    """
     table = Table(
         title="ReAct vs Plan-and-Execute",
         show_lines=True,
@@ -485,7 +700,9 @@ def print_comparison(react: Stats, pe: Stats) -> None:
     r_tt, p_tt = _cmp(react.total_tokens, pe.total_tokens)
     table.add_row("Total tokens", r_tt, p_tt)
     table.add_row("  ↳ input tokens", f"{react.input_tokens:,}", f"{pe.input_tokens:,}")
-    table.add_row("  ↳ output tokens", f"{react.output_tokens:,}", f"{pe.output_tokens:,}")
+    table.add_row(
+        "  ↳ output tokens", f"{react.output_tokens:,}", f"{pe.output_tokens:,}"
+    )
 
     r_wt = f"[yellow]{react.wrong_turns}[/]" if react.wrong_turns else "[green]0[/]"
     p_wt = f"[red]{pe.wrong_turns}[/]" if pe.wrong_turns else "[green]0[/]"
@@ -518,7 +735,14 @@ TASK = (
 
 
 def main() -> None:
-    """Main entry point for the intense agent architecture comparison demo."""
+    """Main entry point orchestrating the intense architecture comparison.
+
+    Executes a multi-layered procurement task using both ReAct and Plan-and-Execute
+    agents to highlight the value of dynamic adaptation.
+
+    Side effects:
+        Executes API workflows and logs test summaries to the terminal.
+    """
     console.print(
         Panel.fit(
             "[bold yellow]Plan-and-Execute vs ReAct Agent[/bold yellow]\n"
@@ -532,14 +756,23 @@ def main() -> None:
     console.print()
 
     # ── ReAct ─────────────────────────────────────────────────────────────────
-    console.print(Rule("[bold cyan]ReAct Agent (Intense Adaptation Loop)[/bold cyan]", style="cyan"))
+    console.print(
+        Rule(
+            "[bold cyan]ReAct Agent (Intense Adaptation Loop)[/bold cyan]", style="cyan"
+        )
+    )
     console.print()
     react = Stats(name="ReAct")
     run_react(TASK, react)
     console.print()
 
     # ── Plan-and-Execute ──────────────────────────────────────────────────────
-    console.print(Rule("[bold magenta]Plan-and-Execute Agent (Rigid Execution)[/bold magenta]", style="magenta"))
+    console.print(
+        Rule(
+            "[bold magenta]Plan-and-Execute Agent (Rigid Execution)[/bold magenta]",
+            style="magenta",
+        )
+    )
     console.print()
     pe = Stats(name="Plan-and-Execute")
     run_plan_exec(TASK, pe)

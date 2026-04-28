@@ -11,12 +11,13 @@ import re
 import json
 import math
 import time
+import textwrap
 from collections import Counter
 from typing import List, Tuple
 
 from google import genai
 from google.genai import types
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
@@ -70,7 +71,7 @@ def _tok(text: str) -> List[str]:
     return re.findall(r"\b[a-z]+\b", text.lower())
 
 
-def build_index(corpus: List[str]):
+def build_index(corpus: List[str]) -> Tuple[List[dict], dict]:
     """Builds a TF-IDF index for the given corpus.
 
     Returns a list of document vectors (dicts) and the global IDF dictionary.
@@ -82,7 +83,7 @@ def build_index(corpus: List[str]):
     # calculate inverse document frequency with smoothing
     idf = {w: math.log((N + 1) / (df[w] + 1)) for w in df}
 
-    def vec(tokens):
+    def vec(tokens: List[str]) -> dict:
         """Converts a list of tokens into a TF-IDF vector."""
         tf = Counter(tokens)
         n = len(tokens) or 1
@@ -106,7 +107,7 @@ def _cos(a: dict, b: dict) -> float:
 
 
 def tfidf_retrieve(
-    query: str, vectors, idf: dict, k: int = 3
+    query: str, vectors: List[dict], idf: dict, k: int = 3
 ) -> List[Tuple[int, str, float]]:
     """Retrieves the top-k most relevant documents from the index using TF-IDF."""
     q_tokens = _tok(query)
@@ -135,7 +136,44 @@ def cosine_emb(a: List[float], b: List[float]) -> float:
     return dot / (na * nb + 1e-10)
 
 
-# ── LLM Generation ────────────────────────────────────────────────────────────
+# ── LLM Generation and Display ────────────────────────────────────────────────
+
+
+def display_model_input(prompt: str):
+    """Styles and prints the prompt inside a grey panel."""
+    wrapped = textwrap.fill(prompt, width=82, subsequent_indent="      ")
+    content = Text.assemble(("USER: ", "bold blue"), (wrapped, "blue"))
+
+    console.print(
+        Panel(
+            Group(content),
+            title="[bold bright_black]Model Input[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+        )
+    )
+    console.print()
+
+
+def display_model_output(response_text: str):
+    """Styles and prints the model response in a grey panel."""
+    wrapped_response = textwrap.fill(
+        response_text, width=82, subsequent_indent="           "
+    )
+    response_content = Text.assemble(
+        ("ASSISTANT: ", "bold green"), (wrapped_response, "italic")
+    )
+
+    console.print(
+        Panel(
+            response_content,
+            title="[bold bright_black]Model Response[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+            highlight=False,
+        )
+    )
+    console.print()
 
 
 def generate(question: str, contexts: List[str], aggressive: bool = False) -> str:
@@ -160,7 +198,13 @@ def generate(question: str, contexts: List[str], aggressive: bool = False) -> st
             "'The context does not contain this information.'\n\n"
             f"Context:\n{ctx}\n\nQuestion: {question}\nAnswer:"
         )
-    return client.models.generate_content(model=GEN_MODEL, contents=prompt).text.strip()
+
+    display_model_input(prompt)
+    answer = client.models.generate_content(
+        model=GEN_MODEL, contents=prompt
+    ).text.strip()
+    display_model_output(answer)
+    return answer
 
 
 # ── RAGAS-style Metrics ───────────────────────────────────────────────────────
@@ -280,12 +324,13 @@ def print_metrics_table(scores: dict):
         table.add_row(k.replace("_", " ").title(), f"{v:.3f}", accuracy_bar(v))
 
     console.print(table)
+    console.print()
 
 
 # ── Failure Mode 1: Retrieval Miss ────────────────────────────────────────────
 
 
-def failure_1_retrieval_miss(vectors, idf) -> dict:
+def failure_1_retrieval_miss(vectors: List[dict], idf: dict) -> dict:
     """Demonstrates failure when the retrieval step misses the correct documents."""
     console.print(Rule("[bold]Failure Mode 1: Retrieval Miss[/bold]", style="white"))
     question = "Who are the founders of NovaTech and when was the company created?"
@@ -306,13 +351,12 @@ def failure_1_retrieval_miss(vectors, idf) -> dict:
         console.print(
             f"  [{rank}] doc[{idx:2d}] score={score:.4f}  [dim]{doc[:60]}...[/dim]{marker}"
         )
+    console.print()
 
     contexts = [doc for _, doc, _ in retrieved]
     answer = generate(question, contexts)
-    console.print(f"\n[bold magenta]> LLM Answer[/bold magenta]")
-    console.print(f"  [dim]Answer:[/dim] {answer}")
 
-    console.print("\n[dim]Computing metrics...[/dim]")
+    console.print("[dim]Computing metrics...[/dim]")
     scores = run_metrics(question, answer, contexts, ground_truth)
     print_metrics_table(scores)
 
@@ -321,7 +365,7 @@ def failure_1_retrieval_miss(vectors, idf) -> dict:
         if scores["context_recall"] < 0.5
         else "[bold green]PASS[/bold green]"
     )
-    console.print(f"\n[bold]Verdict (derived):[/bold] {verdict}\n")
+    console.print(f"[bold]Verdict (derived):[/bold] {verdict}\n")
     return scores
 
 
@@ -343,7 +387,7 @@ def failure_2_lost_in_middle() -> dict:
         for i in range(50)
     ]
     target = CORPUS[9]  # The headquarters info
-    
+
     # Place target at position 25 (middle)
     contexts = noise_docs[:25] + [target] + noise_docs[25:]
     ans_position = 26
@@ -351,14 +395,12 @@ def failure_2_lost_in_middle() -> dict:
     console.print(f"[bold]Q:[/bold] {question}")
     console.print(f"[bold]GT:[/bold] {ground_truth}")
     console.print(
-        f"[dim]Context length: {len(contexts)} chunks. Answer at position {ans_position}/{len(contexts)}.[/dim]"
+        f"[dim]Context length: {len(contexts)} chunks. Answer at position {ans_position}/{len(contexts)}.[/dim]\n"
     )
 
     answer = generate(question, contexts)
-    console.print(f"\n[bold magenta]> LLM Answer[/bold magenta]")
-    console.print(f"  [dim]Answer:[/dim] {answer}")
 
-    console.print("\n[dim]Computing metrics...[/dim]")
+    console.print("[dim]Computing metrics...[/dim]")
     scores = run_metrics(question, answer, contexts, ground_truth)
     print_metrics_table(scores)
 
@@ -367,14 +409,14 @@ def failure_2_lost_in_middle() -> dict:
         if scores["context_precision"] < 0.5
         else "[bold green]PASS[/bold green]"
     )
-    console.print(f"\n[bold]Verdict (derived):[/bold] {verdict}\n")
+    console.print(f"[bold]Verdict (derived):[/bold] {verdict}\n")
     return scores
 
 
 # ── Failure Mode 3: Faithfulness Failure ─────────────────────────────────────
 
 
-def failure_3_faithfulness(vectors, idf) -> dict:
+def failure_3_faithfulness(vectors: List[dict], idf: dict) -> dict:
     """Demonstrates failure when the LLM hallucinates or ignores context constraints."""
     console.print(
         Rule("[bold]Failure Mode 3: Faithfulness Failure[/bold]", style="white")
@@ -387,16 +429,14 @@ def failure_3_faithfulness(vectors, idf) -> dict:
     console.print(f"[bold]Q:[/bold] {question}")
     console.print(f"[bold]GT:[/bold] {ground_truth}")
     console.print(
-        "[dim]Only FY2022 data exists ($9.2M). Aggressive prompt pushes model to commit to a figure.[/dim]"
+        "[dim]Only FY2022 data exists ($9.2M). Aggressive prompt pushes model to commit to a figure.[/dim]\n"
     )
 
     retrieved = tfidf_retrieve(question, vectors, idf, k=3)
     contexts = [doc for _, doc, _ in retrieved]
     answer = generate(question, contexts, aggressive=True)
-    console.print(f"\n[bold magenta]> LLM Answer (Aggressive)[/bold magenta]")
-    console.print(f"  [dim]Answer:[/dim] {answer}")
 
-    console.print("\n[dim]Computing metrics...[/dim]")
+    console.print("[dim]Computing metrics...[/dim]")
     scores = run_metrics(question, answer, contexts, ground_truth)
     print_metrics_table(scores)
 
@@ -405,7 +445,7 @@ def failure_3_faithfulness(vectors, idf) -> dict:
         if scores["faithfulness"] < 0.8
         else "[bold green]PASS[/bold green]"
     )
-    console.print(f"\n[bold]Verdict (derived):[/bold] {verdict}\n")
+    console.print(f"[bold]Verdict (derived):[/bold] {verdict}\n")
     return scores
 
 
@@ -415,6 +455,7 @@ def failure_3_faithfulness(vectors, idf) -> dict:
 def show_summary(r1: dict, r2: dict, r3: dict):
     """Displays a side-by-side comparison of metrics across all three failure modes."""
     console.print(Rule("[bold yellow]Overall Summary[/bold yellow]", style="yellow"))
+    console.print()
 
     table = Table(show_lines=True, title="RAGAS Metrics Comparison")
     table.add_column("Metric", style="bold")
@@ -426,7 +467,8 @@ def show_summary(r1: dict, r2: dict, r3: dict):
     for k in keys:
         row_key = k.replace("_", " ").title()
 
-        def highlight(val, condition):
+        def highlight(val: float, condition: bool) -> str:
+            """Formats the metric score, highlighting it in red if the condition is met."""
             s = f"{val:.3f}"
             return f"[bold red]{s}[/bold red]" if condition else s
 

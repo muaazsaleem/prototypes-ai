@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 ReAct Agent Prototype
 Demonstrates the ReAct (Reasoning + Acting) loop with three tools:
@@ -22,10 +23,11 @@ import time
 
 from google import genai
 from google.genai import types
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
+from rich.text import Text
 
 # ── Console ──────────────────────────────────────────────────────────────────
 
@@ -34,7 +36,7 @@ console = Console()
 # ── Gemini setup ─────────────────────────────────────────────────────────────
 
 CLIENT = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-MODEL_ID = "gemini-2.5-flash"
+MODEL_ID = "gemini-2.0-flash"
 
 # ── Step budget ───────────────────────────────────────────────────────────────
 
@@ -56,17 +58,23 @@ KNOWLEDGE_BASE = {
 
 
 def tool_search(query: str) -> str:
-    """
-    Simulated search tool.  Looks up a fixed knowledge base.
+    """Searches a simulated knowledge base for facts matching the query.
 
-    For unknown queries it returns a "please retry" message — deliberately
-    mimicking a flaky API that never resolves.  This is the trap that causes
-    the looping agent to call search() with the same argument over and over.
+    Args:
+        query: The string to look up.
+
+    Returns:
+        The matched fact string, or a simulated retry prompt if not found.
+
+    Edge cases:
+        Returns a retry prompt if no match exists, deliberately trapping the
+        agent in a loop if it doesn't revise its query.
     """
     key = query.lower().strip()
     for kb_key, answer in KNOWLEDGE_BASE.items():
         if kb_key in key or key in kb_key:
             return answer
+
     # Intentionally asks the model to retry the *same* query rather than refine,
     # which is the mechanism that locks it into a loop.
     return (
@@ -76,9 +84,20 @@ def tool_search(query: str) -> str:
 
 
 def tool_calculator(expression: str) -> str:
-    """
-    Safe arithmetic evaluator.  Supports +, -, *, /, **, and common
-    math functions (sqrt, log, etc.).  Uses ast.parse so no eval() risk.
+    """Safely evaluates an arithmetic mathematical expression.
+
+    Supports basic operators (+, -, *, /, **) and specific math functions.
+    Uses ast.parse to prevent arbitrary code execution vulnerabilities.
+
+    Args:
+        expression: A string containing the mathematical expression.
+
+    Returns:
+        The evaluated result as a string, or an error message.
+
+    Edge cases:
+        Returns an error string for unsupported operations, invalid syntax,
+        or unknown function names.
     """
     safe_names = {
         "sqrt": math.sqrt,
@@ -132,16 +151,25 @@ def tool_calculator(expression: str) -> str:
 
 
 def tool_summariser(text: str) -> str:
-    """
-    Summarises the provided text using Gemini.
-    Called with no system prompt so it doesn't inherit the ReAct agent persona.
+    """Summarises the provided text down to a single concise sentence.
+
+    Called without the agent system prompt so it operates purely as a
+    summarisation utility, rather than continuing the ReAct chain.
+
+    Args:
+        text: The source text to summarize.
+
+    Returns:
+        A one-sentence summary string (max 30 words).
+
+    Side effects:
+        Makes a direct network call to the Gemini API.
     """
     prompt = (
         "Summarise the following text in exactly one concise sentence "
         "(max 30 words):\n\n" + text
     )
-    # Direct call — no system_instruction so this acts as a plain summariser,
-    # not as the ReAct agent.
+
     response = CLIENT.models.generate_content(
         model=MODEL_ID,
         contents=[types.Content(role="user", parts=[types.Part(text=prompt)])],
@@ -185,27 +213,69 @@ Rules:
 def _call_model_with_retry(
     contents: list, max_retries: int = 5, base_delay: float = 10.0
 ) -> str:
+    """Invokes the LLM using the current history, retrying on transient errors.
+
+    Logs the input prompt block before executing the call. Backs off exponentially
+    if rate limited.
+
+    Args:
+        contents: A list of Gemini types.Content objects forming the history.
+        max_retries: Maximum number of attempts before raising an exception.
+        base_delay: Initial wait time in seconds before retrying.
+
+    Returns:
+        The generated text response from the model.
+
+    Side effects:
+        Makes network calls to the Gemini API, sleeps the thread on failure,
+        and logs formatted output to the terminal.
     """
-    Calls Gemini with exponential backoff on 429 / resource-exhausted errors.
-    Returns the model's text response.
-    """
-    console.print(Rule("[bold blue]Model Input[/bold blue]", style="blue"))
+    input_elements = []
+
     for content in contents:
         role = content.role
         text = "\n".join([p.text for p in content.parts if p.text])
+
+        # Override styling if the user message is an Observation
         if role == "user":
             if text.startswith("Observation:"):
-                label = "[bold yellow]tool[/bold yellow]"
-                wrapped = textwrap.fill(text, width=88, subsequent_indent="         ")
-                console.print(f"  {label}:    [yellow]{wrapped}[/yellow]")
+                label_style = "bold yellow"
+                content_style = "yellow"
+                display_role = "tool"
             else:
-                label = "[bold blue]user[/bold blue]"
-                wrapped = textwrap.fill(text, width=88, subsequent_indent="         ")
-                console.print(f"  {label}:    [blue]{wrapped}[/blue]")
+                label_style = "bold blue"
+                content_style = "blue"
+                display_role = "user"
         elif role == "model":
-            label = "[bold green]model[/bold green]"
-            wrapped = textwrap.fill(text, width=88, subsequent_indent="            ")
-            console.print(f"  {label}: [green]{wrapped}[/green]")
+            label_style = "bold green"
+            content_style = "green"
+            display_role = "assistant"
+        else:
+            label_style = "dim"
+            content_style = "dim"
+            display_role = role
+
+        indent = " " * (len(display_role) + 2)
+        wrapped = textwrap.fill(text, width=82, subsequent_indent=indent)
+
+        input_elements.append(
+            Text.assemble(
+                (f"{display_role.upper()}: ", label_style), (wrapped, content_style)
+            )
+        )
+        input_elements.append(Rule(style="bright_black"))
+
+    if input_elements:
+        input_elements.pop()  # remove final rule
+
+    console.print(
+        Panel(
+            Group(*input_elements),
+            title="[bold bright_black]Model Input[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+        )
+    )
     console.print()
 
     for attempt in range(max_retries):
@@ -237,9 +307,13 @@ def _call_model_with_retry(
 
 
 def parse_agent_output(text: str) -> dict:
-    """
-    Extracts (thought, tool_name, tool_arg) or final_answer from raw model output.
-    Returns a dict with keys: thought, action, tool, arg, final_answer.
+    """Extracts the ReAct components (Thought, Action, Final Answer) from model text.
+
+    Args:
+        text: The raw output string from the ReAct agent.
+
+    Returns:
+        A dictionary containing keys: thought, action, tool, arg, and final_answer.
     """
     result = {
         "thought": "",
@@ -278,9 +352,14 @@ def parse_agent_output(text: str) -> dict:
 
 
 def detect_loop(history: list[dict], window: int = 3) -> bool:
-    """
-    Returns True if the last `window` actions are identical tool+arg pairs,
-    indicating the agent is stuck without making progress.
+    """Evaluates whether the agent is stuck repeating the exact same tool and argument.
+
+    Args:
+        history: A list of dictionary objects describing each step's action.
+        window: The number of consecutive identical actions required to trigger detection.
+
+    Returns:
+        True if a loop is detected, False otherwise.
     """
     if len(history) < window:
         return False
@@ -294,8 +373,18 @@ def detect_loop(history: list[dict], window: int = 3) -> bool:
 # ── Display helpers ───────────────────────────────────────────────────────────
 
 
-def print_step(step: int, thought: str, action: str, observation: str):
-    """Prints a single Thought → Action → Observation cycle."""
+def print_step(step: int, thought: str, action: str, observation: str) -> None:
+    """Prints the Thought, Action, and Observation for a single ReAct step.
+
+    Args:
+        step: The current 1-based step counter.
+        thought: The parsed reasoning trace.
+        action: The string representation of the tool invocation.
+        observation: The result returned by the invoked tool.
+
+    Side effects:
+        Prints formatted output to the terminal.
+    """
     console.print(f"\n[bold cyan]> Step {step:02d}[/bold cyan]")
 
     prefix = "[dim]Thought:[/dim]"
@@ -318,8 +407,19 @@ def print_stats(
     verdict: str,
     verdict_color: str,
     **_,
-):
-    """Prints the per-task summary table."""
+) -> None:
+    """Renders a summary table detailing task execution metrics.
+
+    Args:
+        steps: Total steps consumed by the agent.
+        tools_used: A list of strings naming the invoked tools in order.
+        elapsed: The wall-clock execution time in seconds.
+        verdict: The final resolution state of the agent (e.g. Completed).
+        verdict_color: The rich styling color representing the outcome.
+
+    Side effects:
+        Prints a rich Table to the terminal.
+    """
     table = Table(
         show_header=True, header_style="bold", padding=(0, 2), show_edge=False
     )
@@ -345,21 +445,21 @@ def print_stats(
 
 
 def run_react_agent(task: str, max_steps: int = MAX_STEPS) -> dict:
-    """
-    Runs the ReAct agent for a given task.
+    """Executes the ReAct loop until completion, failure, or budget exhaustion.
 
-    The loop:
-      1. Build conversation history and call the model.
-      2. Parse Thought + Action from the model output.
-      3. Execute the tool → get Observation.
-      4. Append Observation and repeat.
-      5. Halt on: Final Answer | step budget exceeded | loop detected.
+    Args:
+        task: The high-level instruction given to the agent.
+        max_steps: The absolute maximum number of steps allowed before halting.
 
-    Returns a dict with run statistics.
+    Returns:
+        A dictionary containing run statistics such as steps taken, tools used,
+        elapsed time, and the final verdict string.
+
+    Side effects:
+        Modifies local state lists, interacts with external APIs, and prints logs.
     """
     start = time.time()
 
-    # Conversation history as google.genai Content objects
     contents: list[types.Content] = [
         types.Content(
             role="user",
@@ -367,15 +467,29 @@ def run_react_agent(task: str, max_steps: int = MAX_STEPS) -> dict:
         )
     ]
 
-    step_history: list[dict] = []  # records tool+arg per step for loop detection
+    step_history: list[dict] = []
     tools_used: list[str] = []
     halt_reason = "max_steps"
 
     for step in range(1, max_steps + 1):
         # ── Model call ────────────────────────────────────────────────────────
         raw_output = _call_model_with_retry(contents)
-        console.print(Rule("[bold green]Model Response[/bold green]", style="green"))
-        console.print(f"[italic]{raw_output}[/italic]", highlight=False)
+
+        wrapped_response = textwrap.fill(
+            raw_output, width=82, subsequent_indent="           "
+        )
+        response_content = Text.assemble(
+            ("ASSISTANT: ", "bold green"), (wrapped_response, "italic")
+        )
+        console.print(
+            Panel(
+                response_content,
+                title="[bold bright_black]Model Response[/bold bright_black]",
+                border_style="bright_black",
+                padding=(1, 2),
+                highlight=False,
+            )
+        )
         console.print()
 
         parsed = parse_agent_output(raw_output)
@@ -455,7 +569,15 @@ def run_react_agent(task: str, max_steps: int = MAX_STEPS) -> dict:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 
-def main():
+def main() -> None:
+    """Main entry point orchestrating the ReAct agent demonstration.
+
+    Executes two test scenarios: one valid sequential workflow and one looping
+    pathological test case, then summarizes results.
+
+    Side effects:
+        Invokes local and remote APIs and prints summaries to the terminal.
+    """
     console.print(
         Panel.fit(
             "[bold yellow]ReAct Agent Prototype[/bold yellow]\n"

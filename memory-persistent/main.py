@@ -40,8 +40,8 @@ from rich.text import Text
 console = Console()
 
 # ─── Configuration ────────────────────────────────────────────────────────────
-# ... rest of configuration remains same
-MODEL = "gemini-2.5-flash"
+
+MODEL = "gemini-2.0-flash"
 MEMORY_FILE = Path("memory_store.json")
 
 # Common English words that carry no semantic meaning for retrieval
@@ -95,7 +95,14 @@ SESSION_2_TURNS = [
 
 
 def load_memory() -> list[dict]:
-    """Read all stored memory entries from the JSON file on disk."""
+    """Reads all stored memory entries from the JSON file on disk.
+
+    Returns:
+        A list of memory dictionary entries, or an empty list if the file is absent.
+
+    Side effects:
+        Reads from memory_store.json on the filesystem.
+    """
     if not MEMORY_FILE.exists():
         return []
     with open(MEMORY_FILE) as f:
@@ -103,34 +110,67 @@ def load_memory() -> list[dict]:
 
 
 def save_memory(entries: list[dict]) -> None:
-    """Persist the current list of memory entries back to disk."""
+    """Persists the current list of memory entries back to disk.
+
+    Args:
+        entries: A list of memory dictionaries to serialize.
+
+    Side effects:
+        Overwrites memory_store.json with a new JSON structure.
+    """
     with open(MEMORY_FILE, "w") as f:
         json.dump({"entries": entries}, f, indent=2)
 
 
 def stem(word: str) -> str:
-    """Minimal stemmer: strip a trailing 's' so plural/verb forms match."""
+    """Provides minimal stemming by stripping trailing 's' characters.
+
+    Args:
+        word: The string to be stemmed.
+
+    Returns:
+        The word with a trailing 's' removed, provided it's longer than 3 chars.
+    """
+    # Only stem plurals or verbs ending in 's' if the root is substantial
     return word[:-1] if word.endswith("s") and len(word) > 3 else word
 
 
 def retrieve_relevant(query: str, entries: list[dict]) -> list[dict]:
+    """Retrieves memory entries that keyword-match the provided user query.
+
+    Args:
+        query: The raw string query from the user.
+        entries: A list of stored memory dictionaries.
+
+    Returns:
+        A list of memory dictionaries that have keyword overlap with the query.
     """
-    Keyword-based retrieval strategy:
-      1. Tokenize the user query, strip stop words, apply minimal stemming.
-      2. Return any memory entry whose (stemmed) keywords overlap the query tokens.
-    """
+    # Extract words, lower-case them, discard stop words, and stem the rest
     tokens = {stem(w) for w in re.findall(r"\w+", query.lower()) if w not in STOP_WORDS}
+
+    # Return any entry where at least one stored keyword matches our query tokens
     return [e for e in entries if tokens & {stem(k) for k in e["keywords"]}]
 
 
 def log_llm_interaction(
     system_instruction: str | None, contents: list | str, response_text: str
 ):
-    """Logs the model input and response according to terminal-output-style."""
+    """Logs the model input and response according to terminal-output-style.
+
+    Args:
+        system_instruction: The system prompt, if any.
+        contents: Either a simple string prompt or a list of types.Content objects.
+        response_text: The text returned by the model.
+
+    Side effects:
+        Prints formatted text to the terminal via rich.
+    """
     input_elements = []
 
     if system_instruction:
-        wrapped = textwrap.fill(system_instruction, width=82, subsequent_indent="        ")
+        wrapped = textwrap.fill(
+            system_instruction, width=82, subsequent_indent="        "
+        )
         input_elements.append(Text.assemble(("SYSTEM: ", "dim"), (wrapped, "dim")))
         input_elements.append(Rule(style="bright_black"))
 
@@ -145,13 +185,21 @@ def log_llm_interaction(
             if role == "user":
                 label_style, content_style, role_label = "bold blue", "blue", "USER"
             elif role == "model":
-                label_style, content_style, role_label = "bold green", "green", "ASSISTANT"
+                label_style, content_style, role_label = (
+                    "bold green",
+                    "green",
+                    "ASSISTANT",
+                )
             else:
                 label_style, content_style, role_label = "dim", "dim", role.upper()
 
             indent = " " * (len(role_label) + 2)
             wrapped = textwrap.fill(text, width=82, subsequent_indent=indent)
-            input_elements.append(Text.assemble((f"{role_label}: ", label_style), (wrapped, content_style)))
+            input_elements.append(
+                Text.assemble(
+                    (f"{role_label}: ", label_style), (wrapped, content_style)
+                )
+            )
             input_elements.append(Rule(style="bright_black"))
 
     if input_elements and isinstance(input_elements[-1], Rule):
@@ -165,11 +213,13 @@ def log_llm_interaction(
             padding=(1, 2),
         )
     )
+    console.print()
 
-    wrapped_response = textwrap.fill(response_text, width=82, subsequent_indent="           ")
+    wrapped_response = textwrap.fill(
+        response_text, width=82, subsequent_indent="           "
+    )
     response_content = Text.assemble(
-        ("ASSISTANT: ", "bold green"),
-        (wrapped_response, "italic")
+        ("ASSISTANT: ", "bold green"), (wrapped_response, "italic")
     )
 
     console.print(
@@ -190,8 +240,20 @@ def extract_and_store_facts(
     assistant_msg: str,
     entries: list[dict],
 ) -> list[dict]:
-    """
-    After each conversation turn, ask the model to extract structured facts.
+    """Prompts the model to extract facts from a turn and saves them to memory.
+
+    Args:
+        client: The Gemini client instance.
+        user_msg: The latest message from the user.
+        assistant_msg: The latest response from the assistant.
+        entries: The current list of stored memory entries.
+
+    Returns:
+        The updated list of memory entries containing any newly extracted facts.
+
+    Side effects:
+        Makes a network call to the Gemini API and overwrites the memory file.
+        Prints extraction logs.
     """
     extraction_prompt = f"""You are a memory extraction system.
 Given a conversation turn, extract factual statements about the user as a JSON array.
@@ -214,7 +276,7 @@ Return only valid JSON with no markdown fences. Example:
     reply = response.text.strip()
     log_llm_interaction(None, extraction_prompt, reply)
 
-    # Strip markdown code fences that the model sometimes adds
+    # Clean the raw string before parsing to handle unexpected formatting
     raw = re.sub(r"^```[a-z]*\n?", "", reply)
     raw = re.sub(r"\n?```$", "", raw)
 
@@ -230,8 +292,18 @@ Return only valid JSON with no markdown fences. Example:
 def run_no_memory_session(
     client: genai.Client, label: str, turns: list[str]
 ) -> list[str]:
-    """
-    Runs one session of the no-memory agent.
+    """Runs a multi-turn conversation session without persistent memory.
+
+    Args:
+        client: The Gemini client instance.
+        label: The descriptive header printed before execution.
+        turns: A list of strings representing consecutive user prompts.
+
+    Returns:
+        A list of assistant responses corresponding to each user turn.
+
+    Side effects:
+        Makes API calls and prints formatted chat logs to the terminal.
     """
     console.print(Rule(f"[bold]{label}[/bold]", style="white"))
     console.print()
@@ -264,12 +336,15 @@ def run_no_memory_session(
         log_llm_interaction(system_instruction, contents, reply)
 
         console.print(f"\n[bold blue]> Turn {i}[/bold blue]")
+
         prefix_user = "[dim]user:[/dim]"
         wrapped_user = textwrap.fill(user_msg, width=88, subsequent_indent="         ")
         console.print(f"  {prefix_user} [blue]{wrapped_user}[/blue]")
 
         prefix_assistant = "[dim]assistant:[/dim]"
-        wrapped_assistant = textwrap.fill(reply, width=88, subsequent_indent="         ")
+        wrapped_assistant = textwrap.fill(
+            reply, width=88, subsequent_indent="         "
+        )
         console.print(f"  {prefix_assistant} [italic]{wrapped_assistant}[/italic]")
         console.print()
 
@@ -289,8 +364,19 @@ def run_memory_session(
     turns: list[str],
     write_memory: bool,
 ) -> list[str]:
-    """
-    Runs one session of the memory-augmented agent.
+    """Runs a session using keyword-based retrieval from an external JSON file.
+
+    Args:
+        client: The Gemini client instance.
+        label: The descriptive header printed before execution.
+        turns: A list of strings representing consecutive user prompts.
+        write_memory: If True, extract facts from each turn and save to disk.
+
+    Returns:
+        A list of assistant responses corresponding to each user turn.
+
+    Side effects:
+        Makes API calls, reads/writes JSON files, prints formatted chat logs.
     """
     console.print(Rule(f"[bold]{label}[/bold]", style="white"))
     console.print()
@@ -314,7 +400,9 @@ def run_memory_session(
             f"{memory_block}"
         )
 
-        console.print(f"\n[bold cyan]> Turn {i}[/bold cyan] [dim]({len(relevant)} retrieved / {len(all_entries)} total in memory)[/dim]")
+        console.print(
+            f"\n[bold cyan]> Turn {i}[/bold cyan] [dim]({len(relevant)} retrieved / {len(all_entries)} total in memory)[/dim]"
+        )
         for e in relevant:
             console.print(f"    [dim]recall →[/dim] [yellow]{e['fact']}[/yellow]")
 
@@ -341,7 +429,9 @@ def run_memory_session(
         console.print(f"  {prefix_user} [blue]{wrapped_user}[/blue]")
 
         prefix_assistant = "[dim]assistant:[/dim]"
-        wrapped_assistant = textwrap.fill(reply, width=88, subsequent_indent="         ")
+        wrapped_assistant = textwrap.fill(
+            reply, width=88, subsequent_indent="         "
+        )
         console.print(f"  {prefix_assistant} [italic]{wrapped_assistant}[/italic]")
 
         if write_memory:
@@ -364,7 +454,15 @@ def run_memory_session(
 
 
 def print_verdict(no_mem_responses: list[str], mem_responses: list[str]) -> None:
-    """Print a side-by-side comparison table and summary stats."""
+    """Prints a side-by-side comparison table summarizing the experiment results.
+
+    Args:
+        no_mem_responses: The list of S2 answers generated by the baseline agent.
+        mem_responses: The list of S2 answers generated by the memory agent.
+
+    Side effects:
+        Prints a rich table and summary stats to the terminal.
+    """
     console.print(
         Rule("[bold yellow]Verdict — Session 2 Recall[/bold yellow]", style="yellow")
     )
@@ -392,7 +490,9 @@ def print_verdict(no_mem_responses: list[str], mem_responses: list[str]) -> None
     console.print(f"  [bold]Session 1 turns:[/bold]          {len(SESSION_1_TURNS)}")
     console.print(f"  [bold]Session 2 turns:[/bold]          {len(SESSION_2_TURNS)}")
     console.print(f"  [bold]Memory file:[/bold]              [dim]{MEMORY_FILE}[/dim]")
-    console.print(f"  [bold]Facts stored after S1:[/bold]    [green]{len(entries)} entries[/green]")
+    console.print(
+        f"  [bold]Facts stored after S1:[/bold]    [green]{len(entries)} entries[/green]"
+    )
     console.print()
     console.print(
         f"  [bold]No-memory agent S2:[/bold]  [bold red]0 facts retained — blank slate[/bold red]"
@@ -414,6 +514,14 @@ def print_verdict(no_mem_responses: list[str], mem_responses: list[str]) -> None
 
 
 def main():
+    """Main entry point orchestrating the memory comparison experiment.
+
+    Runs part 1 (no memory) and part 2 (external memory) across two simulated
+    sessions each, then prints the verdict comparing their retention.
+
+    Side effects:
+        Unlinks existing memory_store.json, makes API calls, orchestrates tests.
+    """
     console.print(
         Panel.fit(
             "[bold yellow]Memory That Persists Across Sessions[/bold yellow]\n"

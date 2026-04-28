@@ -13,7 +13,7 @@ import re
 import textwrap
 
 from google import genai
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
@@ -24,16 +24,18 @@ console = Console()
 
 # ── API Setup ────────────────────────────────────────────────────────────────
 
-# gemini-2.0-flash: High-performance model capable of complex reasoning and 
+# gemini-2.0-flash: High-performance model capable of complex reasoning and
 # self-correction during the reflexion process.
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-2.0-flash"
 MAX_ATTEMPTS = 3
 
 # Attempt to initialize the GenAI client.
 try:
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 except KeyError:
-    console.print("[bold red]Error:[/bold red] GEMINI_API_KEY environment variable not set.")
+    console.print(
+        "[bold red]Error:[/bold red] GEMINI_API_KEY environment variable not set."
+    )
     raise SystemExit(1)
 
 # ── Task Definition ──────────────────────────────────────────────────────────
@@ -70,136 +72,290 @@ Return ONLY the Python function — no explanation, no markdown fences.\
 """
 
 # Eight test cases covering exact matches, partial credit, missing answers,
-# empty input, and extra answers. 
+# empty input, and extra answers.
 # NOTE: The test cases secretly expect descending order, forcing a first-attempt failure.
 TEST_CASES = [
     (
         {1: "Paris", 2: "London", 3: "Berlin"},
         {1: "Paris", 2: "Rome", 3: "Berlin"},
         False,
-        {"score": 2.0, "percentage": 66.7, "correct": [3, 1], "partial": [], "missed": [2]},
+        {
+            "score": 2.0,
+            "percentage": 66.7,
+            "correct": [3, 1],
+            "partial": [],
+            "missed": [2],
+        },
         "Basic exact match",
     ),
     (
         {1: "paris", 2: "  London  ", 3: "Berlin"},
         {1: "Paris", 2: "London", 3: "berlin"},
         True,
-        {"score": 1.5, "percentage": 50.0, "correct": [], "partial": [3, 2, 1], "missed": []},
+        {
+            "score": 1.5,
+            "percentage": 50.0,
+            "correct": [],
+            "partial": [3, 2, 1],
+            "missed": [],
+        },
         "Partial credit: case + whitespace",
     ),
     (
         {1: "Paris", 3: "Berlin"},
         {1: "Paris", 2: "Rome", 3: "Berlin"},
         False,
-        {"score": 2.0, "percentage": 66.7, "correct": [3, 1], "partial": [], "missed": [2]},
+        {
+            "score": 2.0,
+            "percentage": 66.7,
+            "correct": [3, 1],
+            "partial": [],
+            "missed": [2],
+        },
         "Missing answer counts as missed",
     ),
     (
         {},
         {1: "Paris", 2: "Rome"},
         False,
-        {"score": 0.0, "percentage": 0.0, "correct": [], "partial": [], "missed": [2, 1]},
+        {
+            "score": 0.0,
+            "percentage": 0.0,
+            "correct": [],
+            "partial": [],
+            "missed": [2, 1],
+        },
         "Empty answers: all missed",
     ),
     (
         {1: "A", 2: "B", 3: "C"},
         {1: "A", 2: "B", 3: "C"},
         False,
-        {"score": 3.0, "percentage": 100.0, "correct": [3, 2, 1], "partial": [], "missed": []},
+        {
+            "score": 3.0,
+            "percentage": 100.0,
+            "correct": [3, 2, 1],
+            "partial": [],
+            "missed": [],
+        },
         "All correct",
     ),
     (
         {1: "paris", 2: "LONDON"},
         {1: "Paris", 2: "London"},
         False,
-        {"score": 0.0, "percentage": 0.0, "correct": [], "partial": [], "missed": [2, 1]},
+        {
+            "score": 0.0,
+            "percentage": 0.0,
+            "correct": [],
+            "partial": [],
+            "missed": [2, 1],
+        },
         "Case mismatch, partial_credit=False → all missed",
     ),
     (
         {1: "Paris", 99: "Extra"},
         {1: "Paris", 2: "Rome"},
         False,
-        {"score": 1.0, "percentage": 50.0, "correct": [1], "partial": [], "missed": [2]},
+        {
+            "score": 1.0,
+            "percentage": 50.0,
+            "correct": [1],
+            "partial": [],
+            "missed": [2],
+        },
         "Extra answer not in key is ignored",
     ),
     (
         {1: "Paris", 2: "rome", 3: "Wrong"},
         {1: "Paris", 2: "Rome", 3: "Berlin"},
         True,
-        {"score": 1.5, "percentage": 50.0, "correct": [1], "partial": [2], "missed": [3]},
+        {
+            "score": 1.5,
+            "percentage": 50.0,
+            "correct": [1],
+            "partial": [2],
+            "missed": [3],
+        },
         "Mixed: exact + partial + missed",
     ),
 ]
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+
+def log_llm_interaction(prompt: str, response_text: str) -> None:
+    """Logs the LLM interaction in standardized grey panels.
+
+    Args:
+        prompt: The raw string prompt sent to the model.
+        response_text: The string response returned by the model.
+
+    Side effects:
+        Outputs formatted rich panels to the terminal.
+    """
+    input_elements = []
+    role = "user"
+    label_style = "bold blue"
+    content_style = "blue"
+
+    indent = " " * (len(role) + 2)
+    wrapped = textwrap.fill(prompt, width=82, subsequent_indent=indent)
+
+    input_elements.append(
+        Text.assemble((f"{role.upper()}: ", label_style), (wrapped, content_style))
+    )
+
+    console.print(
+        Panel(
+            Group(*input_elements),
+            title="[bold bright_black]Model Input[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+        )
+    )
+    console.print()
+
+    wrapped_response = textwrap.fill(
+        response_text, width=82, subsequent_indent="           "
+    )
+    response_content = Text.assemble(
+        ("ASSISTANT: ", "bold green"), (wrapped_response, "italic")
+    )
+
+    console.print(
+        Panel(
+            response_content,
+            title="[bold bright_black]Model Response[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+            highlight=False,
+        )
+    )
+    console.print()
+
+
 def accuracy_bar(correct: int, total: int, width: int = 22) -> Text:
-    """Returns a colored progress bar representing the success rate.
-    
-    The bar shifts from red to yellow to green based on the percentage of 
-    successful test cases.
+    """Generates a styled progress bar showing the percentage of passed tests.
+
+    Args:
+        correct: Number of successful test cases.
+        total: Total number of test cases run.
+        width: Visual width of the progress bar in characters.
+
+    Returns:
+        A rich.text.Text object containing the colored bar and percentage.
     """
     pct = correct / total if total > 0 else 0
     filled = round(pct * width)
     bar = "X" * filled + "." * (width - filled)
     color = "green" if pct >= 0.8 else "yellow" if pct >= 0.5 else "red"
-    return Text(f"[{bar}]  {correct}/{total}  ({int(pct * 100)}%)", style=color)
+    return Text(f"{bar}  {correct}/{total}  ({int(pct * 100)}%)", style=color)
+
 
 def extract_function(raw: str) -> str:
-    """Strips markdown code fences and whitespace from a string.
-    
-    Used to clean up the LLM response which might include triple-backtick blocks.
+    """Extracts raw code from a markdown-formatted response string.
+
+    Args:
+        raw: The raw text response from the model.
+
+    Returns:
+        The text stripped of surrounding markdown code fences.
     """
     raw = re.sub(r"```(?:python)?\n?", "", raw)
     return raw.replace("```", "").strip()
 
+
 def evaluate(code: str) -> list[dict]:
-    """Executes the provided code and runs it against a suite of test cases.
-    
-    Returns a list of result dictionaries containing the pass/fail status,
-    actual output, and any encountered errors for each test.
+    """Compiles the given code and executes it against the global TEST_CASES suite.
+
+    Args:
+        code: The raw Python source string to execute.
+
+    Returns:
+        A list of dictionaries describing the pass/fail result for each test.
+        If compilation fails, all tests are marked as failed with the syntax error.
     """
     results = []
     namespace: dict = {}
-    
-    # Compiles and executes the generated string as Python code.
+
     try:
+        # Evaluate the LLM-generated string inside the isolated namespace dict
         exec(compile(code, "<generated>", "exec"), namespace)
     except Exception as exc:
-        # If compilation fails, mark all tests as failed with the error.
         for *_, expected, label in TEST_CASES:
-            results.append(dict(label=label, passed=False, got=None, expected=expected, error=str(exc)))
+            results.append(
+                dict(
+                    label=label,
+                    passed=False,
+                    got=None,
+                    expected=expected,
+                    error=str(exc),
+                )
+            )
         return results
 
     fn = namespace.get("grade_exam")
     if fn is None:
+        # Model generated valid code but used the wrong function name
         for *_, expected, label in TEST_CASES:
-            results.append(dict(label=label, passed=False, got=None, expected=expected, error="Function 'grade_exam' not found"))
+            results.append(
+                dict(
+                    label=label,
+                    passed=False,
+                    got=None,
+                    expected=expected,
+                    error="Function 'grade_exam' not found",
+                )
+            )
         return results
 
-    # Run every test case against the extracted function.
     for answers, key, partial_credit, expected, label in TEST_CASES:
         try:
-            # Deepcopy prevents test cases from mutating shared dicts.
+            # Deepcopy prevents the generated code from secretly mutating the test suite data
             got = fn(copy.deepcopy(answers), copy.deepcopy(key), partial_credit)
-            results.append(dict(label=label, passed=(got == expected), got=got, expected=expected, error=None))
+            results.append(
+                dict(
+                    label=label,
+                    passed=(got == expected),
+                    got=got,
+                    expected=expected,
+                    error=None,
+                )
+            )
         except Exception as exc:
-            results.append(dict(label=label, passed=False, got=None, expected=expected, error=str(exc)))
+            results.append(
+                dict(
+                    label=label,
+                    passed=False,
+                    got=None,
+                    expected=expected,
+                    error=str(exc),
+                )
+            )
 
     return results
 
+
 # ── Agent Steps ──────────────────────────────────────────────────────────────
 
+
 def generate_code(reflection_notes: list[str]) -> str:
-    """Queries the model to generate a Python implementation of the task.
-    
-    If prior reflection notes exist, they are appended to the prompt as strict
-    requirements for the next attempt. This implements the Reflexion cycle.
+    """Prompts the LLM to write the function, injecting prior reflections if available.
+
+    Args:
+        reflection_notes: A list of previously generated failure analysis notes.
+
+    Returns:
+        The extracted Python source code.
+
+    Side effects:
+        Makes a network call to the Gemini API and logs the interaction.
     """
     if not reflection_notes:
         prompt = TASK_DESCRIPTION
     else:
-        # Accumulate all past reflections to ensure cumulative improvement.
+        # Concat prior reflections to create cumulative memory within the session
         combined = "\n\n".join(
             f"[Reflection from attempt {i + 1}]\n{note}"
             for i, note in enumerate(reflection_notes)
@@ -212,27 +368,26 @@ def generate_code(reflection_notes: list[str]) -> str:
             "Rewrite the function addressing every point in the reflections above."
         )
 
-    # Use the requested model with verbatim output tracking.
-    console.print(Rule("[bold blue]Model Input[/bold blue]", style="blue"))
-    label = "[bold blue]user[/bold blue]"
-    wrapped = textwrap.fill(prompt, width=88, subsequent_indent="         ")
-    console.print(f"  {label}:    [blue]{wrapped}[/blue]")
-    console.print()
-
     response = client.models.generate_content(model=MODEL, contents=prompt)
     response_text = response.text
-
-    console.print(Rule("[bold green]Model Response[/bold green]", style="green"))
-    console.print(f"[italic]{response_text}[/italic]", highlight=False)
-    console.print()
+    log_llm_interaction(prompt, response_text)
 
     return extract_function(response_text)
 
+
 def generate_reflection(attempt: int, results: list[dict], code: str) -> str:
-    """Prompts the model to analyze its own failed code and test results.
-    
-    Returns a concise note describing specific bugs and the logical changes 
-    required to fix them. No code is generated in this step, only reasoning.
+    """Prompts the LLM to diagnose bugs based on the source code and failed test outputs.
+
+    Args:
+        attempt: The current 1-based attempt number.
+        results: The output from the evaluate() function containing test pass/fail states.
+        code: The Python source code that caused the failures.
+
+    Returns:
+        A string containing concise analysis and instructions to fix the code.
+
+    Side effects:
+        Makes a network call to the Gemini API and logs the interaction.
     """
     failures = [r for r in results if not r["passed"]]
     failure_lines = "\n".join(
@@ -251,27 +406,21 @@ def generate_reflection(attempt: int, results: list[dict], code: str) -> str:
         "Be concrete — name the specific lines or logic to change. No code examples."
     )
 
-    console.print(Rule("[bold blue]Model Input[/bold blue]", style="blue"))
-    label = "[bold blue]user[/bold blue]"
-    wrapped = textwrap.fill(prompt, width=88, subsequent_indent="         ")
-    console.print(f"  {label}:    [blue]{wrapped}[/blue]")
-    console.print()
-
     response = client.models.generate_content(model=MODEL, contents=prompt)
     response_text = response.text.strip()
-
-    console.print(Rule("[bold green]Model Response[/bold green]", style="green"))
-    console.print(f"[italic]{response_text}[/italic]", highlight=False)
-    console.print()
+    log_llm_interaction(prompt, response_text)
 
     return response_text
 
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+
 def main():
-    """Orchestrates the multi-attempt Reflexion loop and displays results.
-    
-    Follows terminal-output-style guidelines for all CLI interactions.
+    """Runs the main reflexion loop across multiple attempts and prints a summary.
+
+    Side effects:
+        Makes API calls, evaluates code, formats outputs to stdout.
     """
     console.print(
         Panel.fit(
@@ -289,24 +438,35 @@ def main():
     scores: list[int] = []
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        console.print(Rule(f"[bold]Attempt {attempt} / {MAX_ATTEMPTS}[/bold]", style="white"))
+        console.print(
+            Rule(f"[bold]Attempt {attempt} / {MAX_ATTEMPTS}[/bold]", style="white")
+        )
         console.print()
 
         # Phase 1: Generation
-        ctx_label = f"using {len(reflection_notes)} prior reflections" if reflection_notes else "cold start"
-        console.print(f"[bold cyan]-- Generation ({ctx_label}) --------------------------------------[/bold cyan]")
+        ctx_label = (
+            f"using {len(reflection_notes)} prior reflections"
+            if reflection_notes
+            else "cold start"
+        )
+        console.print(
+            f"[bold cyan]-- Generation ({ctx_label}) --------------------------------------[/bold cyan]"
+        )
         code = generate_code(reflection_notes)
-        console.print(f"  [dim]Model generated {len(code.splitlines())} lines of code.[/dim]")
+        console.print(
+            f"  [dim]Model generated {len(code.splitlines())} lines of code.[/dim]"
+        )
 
         # Phase 2: Evaluation
         console.print()
-        console.print("[bold magenta]-- Evaluation ------------------------------------------------[/bold magenta]")
+        console.print(
+            "[bold magenta]-- Evaluation ------------------------------------------------[/bold magenta]"
+        )
         results = evaluate(code)
 
         for r in results:
-            # Use 'o' dots for compact progress tracking as per style guide.
-            status = "[green]PASS[/green]" if r["passed"] else "[red]FAIL[/red]"
-            console.print(f"  {status:7} [dim]{r['label']}[/dim]", highlight=False)
+            dot = "[green]o[/green]" if r["passed"] else "[red]o[/red]"
+            console.print(f"  {dot} [dim]{r['label']}[/dim]", highlight=False)
 
         passed = sum(1 for r in results if r["passed"])
         scores.append(passed)
@@ -319,17 +479,23 @@ def main():
             failures = [r for r in results if not r["passed"]]
             if failures:
                 console.print()
-                console.print("[bold yellow]-- Reflection Note -------------------------------------------[/bold yellow]")
+                console.print(
+                    "[bold yellow]-- Reflection Note -------------------------------------------[/bold yellow]"
+                )
                 note = generate_reflection(attempt, results, code)
                 reflection_notes.append(note)
-                
+
                 # Wrap and display the verbatim reflection notes.
                 for line in note.splitlines():
                     if line.strip():
-                        wrapped = textwrap.fill(line.strip(), width=88, subsequent_indent="    ")
+                        wrapped = textwrap.fill(
+                            line.strip(), width=88, subsequent_indent="    "
+                        )
                         console.print(f"  [dim]{wrapped}[/dim]")
             else:
-                console.print("\n  [bold green]All tests passed! Skipping reflection.[/bold green]")
+                console.print(
+                    "\n  [bold green]All tests passed! Skipping reflection.[/bold green]"
+                )
                 # We can stop early if perfect score achieved, or continue to show stability.
                 if passed == len(TEST_CASES):
                     # Pad the scores array for the summary table if we break.
@@ -368,7 +534,7 @@ def main():
     # Final verdict logic.
     first, last = scores[0], scores[-1]
     total = len(TEST_CASES)
-    
+
     if last > first:
         verdict = f"[bold green]Improved:[/bold green] {first}/{total} → {last}/{total}"
     elif last == total:
@@ -379,8 +545,11 @@ def main():
         verdict = f"[bold red]Regressed:[/bold red] {first}/{total} → {last}/{total}"
 
     console.print(f"  Verdict: {verdict}")
-    console.print("  [dim]Concept: Reflexion is in-session learning that resets between runs.[/dim]")
+    console.print(
+        "  [dim]Concept: Reflexion is in-session learning that resets between runs.[/dim]"
+    )
     console.print()
+
 
 if __name__ == "__main__":
     main()

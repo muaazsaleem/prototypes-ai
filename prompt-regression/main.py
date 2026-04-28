@@ -16,6 +16,13 @@ import time
 import textwrap
 
 from google import genai
+from rich.console import Console, Group
+from rich.panel import Panel
+from rich.rule import Rule
+from rich.table import Table
+from rich.text import Text
+
+console = Console()
 
 # ─── Prompt Versions ──────────────────────────────────────────────────────────
 #
@@ -123,36 +130,110 @@ TEST_CASES = [
     },
 ]
 
+# ─── Display Helpers ──────────────────────────────────────────────────────────
+
+
+def display_model_input(system_prompt: str, user_message: str):
+    """Styles and prints the system prompt and user message in a grey panel."""
+    input_elements = []
+
+    # System prompt
+    wrapped_sys = textwrap.fill(system_prompt, width=82, subsequent_indent="        ")
+    input_elements.append(Text.assemble(("SYSTEM: ", "dim"), (wrapped_sys, "dim")))
+    input_elements.append(Rule(style="bright_black"))
+
+    # User message
+    wrapped_user = textwrap.fill(user_message, width=82, subsequent_indent="      ")
+    input_elements.append(
+        Text.assemble(("USER: ", "bold blue"), (wrapped_user, "blue"))
+    )
+
+    console.print(
+        Panel(
+            Group(*input_elements),
+            title="[bold bright_black]Model Input[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+        )
+    )
+    console.print()
+
+
+def display_model_output(response_text: str):
+    """Styles and prints the model response in a grey panel."""
+    wrapped_response = textwrap.fill(
+        response_text, width=82, subsequent_indent="           "
+    )
+    response_content = Text.assemble(
+        ("ASSISTANT: ", "bold green"), (wrapped_response, "italic")
+    )
+
+    console.print(
+        Panel(
+            response_content,
+            title="[bold bright_black]Model Response[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+            highlight=False,
+        )
+    )
+    console.print()
+
+
 # ─── Core Harness ─────────────────────────────────────────────────────────────
 
+
 def classify(client: genai.Client, prompt: str, message: str) -> dict:
-    """Call Gemini with the system prompt + user message, return parsed JSON."""
+    """Calls the Gemini model with a structured prompt and parses the JSON response.
+
+    Strips any markdown code fences the model might wrap the JSON in before parsing.
+    Returns an empty dict if the JSON is invalid.
+    """
     full_prompt = f"{prompt}\nCustomer message:\n{message}"
     response = client.models.generate_content(
         model="gemini-2.0-flash",
         contents=full_prompt,
     )
     text = response.text.strip()
-    # Strip markdown code fences the model sometimes adds
+
+    # Strip markdown code fences the model sometimes adds around JSON blocks
     if text.startswith("```"):
         lines = text.splitlines()
         text = "\n".join(lines[1:-1])
-    return json.loads(text)
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {}
 
 
 def check(actual: dict, expected: dict) -> tuple[bool, str]:
-    """Compare actual vs expected on every field. Return (passed, failure_reason)."""
+    """Compares the actual model output against expected ground truth fields.
+
+    Returns a tuple of (passed, failure_reason).
+    """
     for field in ("urgency", "category"):
         if actual.get(field) != expected[field]:
-            return False, f"{field}: expected '{expected[field]}', got '{actual.get(field)}'"
+            return (
+                False,
+                f"{field}: expected '{expected[field]}', got '{actual.get(field)}'",
+            )
     return True, ""
 
 
-def run_suite(client: genai.Client, prompt: str, label: str) -> list[dict]:
-    """Run every test case against the prompt. Return a list of result dicts."""
-    print(f"\nRunning {label} ({len(TEST_CASES)} tests)...")
+def run_suite(client: genai.Client, prompt: str, label: str, color: str) -> list[dict]:
+    """Executes the full test suite against a specific prompt version.
+
+    Uses live progress dots for visual feedback during execution.
+    Returns a list of test execution results.
+    """
+    console.print(
+        f"[bold {color}]-- {label} --------------------------------------[/bold {color}]"
+    )
     results = []
-    for tc in TEST_CASES:
+
+    for i, tc in enumerate(TEST_CASES, start=1):
+        start_time = time.time()
         try:
             actual = classify(client, prompt, tc["input"])
             passed, reason = check(actual, tc["expected"])
@@ -160,118 +241,162 @@ def run_suite(client: genai.Client, prompt: str, label: str) -> list[dict]:
             actual = {}
             passed, reason = False, f"exception: {exc}"
 
-        marker = "✓" if passed else "✗"
-        print(f"  [{marker}] #{tc['id']:02d}  {tc['input'][:60]}...")
-        results.append({
-            "id":       tc["id"],
-            "input":    tc["input"],
-            "expected": tc["expected"],
-            "actual":   actual,
-            "passed":   passed,
-            "reason":   reason,
-        })
-        time.sleep(0.5)  # stay within free-tier rate limits
+        elapsed = time.time() - start_time
+
+        # Render visual progress dots per item
+        dot = "[green]o[/green]" if passed else "[red]o[/red]"
+        console.print(
+            f"  Item #{tc['id']:02d}: {dot} [dim]{elapsed:4.1f}s[/dim]",
+            end="   ",
+            highlight=False,
+        )
+
+        # Break line every 4 items to keep the terminal compact
+        if i % 4 == 0:
+            console.print()
+
+        results.append(
+            {
+                "id": tc["id"],
+                "input": tc["input"],
+                "expected": tc["expected"],
+                "actual": actual,
+                "passed": passed,
+                "reason": reason,
+            }
+        )
+
+        # Artificial delay to avoid hitting free-tier rate limits
+        time.sleep(0.5)
+
+    if len(TEST_CASES) % 4 != 0:
+        console.print()
+    console.print()
     return results
 
 
 # ─── Reporting ────────────────────────────────────────────────────────────────
 
-def show_prompt_diff() -> None:
-    """Print lines added in v2 that weren't in v1 — makes the change visible."""
-    v1_lines = set(PROMPT_V1.splitlines())
-    added   = [l for l in PROMPT_V2.splitlines() if l not in v1_lines and l.strip()]
-    removed = [l for l in PROMPT_V1.splitlines() if l not in set(PROMPT_V2.splitlines()) and l.strip()]
 
-    print("\nPrompt diff  (V1 → V2):")
+def show_prompt_diff() -> None:
+    """Calculates and prints a rudimentary line-by-line diff between prompt versions.
+
+    Highlights added rules to provide context for subsequent regressions.
+    """
+    v1_lines = set(PROMPT_V1.splitlines())
+    added = [l for l in PROMPT_V2.splitlines() if l not in v1_lines and l.strip()]
+    removed = [
+        l
+        for l in PROMPT_V1.splitlines()
+        if l not in set(PROMPT_V2.splitlines()) and l.strip()
+    ]
+
+    console.print(Rule("[bold]Prompt Diff (V1 → V2)[/bold]", style="white"))
+
     for line in removed:
-        print(f"  - {line}")
+        console.print(f"  [red]- {line}[/red]")
     for line in added:
-        print(f"  + {line}")
+        console.print(f"  [green]+ {line}[/green]")
+    console.print()
 
 
 def render_table(v1_results: list[dict], v2_results: list[dict]) -> None:
-    """Print a side-by-side pass/fail comparison table and regression summary."""
-    INPUT_W  = 48
-    STATUS_W = 8
+    """Generates a summary table and detailed failure reports using Rich formatting.
 
-    row_fmt = "| {:>2} | {:<{iw}} | {:^{sw}} | {:^{sw}} | {:^12} |"
-    divider = (
-        "+" + "-" * 4
-        + "+" + "-" * (INPUT_W + 2)
-        + "+" + "-" * (STATUS_W + 2)
-        + "+" + "-" * (STATUS_W + 2)
-        + "+" + "-" * 14
-        + "+"
-    )
+    Identifies fixed tests and regressions, printing detailed LLM IO for regressions.
+    """
+    console.print(Rule("[bold yellow]Overall Summary[/bold yellow]", style="yellow"))
+    console.print()
 
-    print("\n" + "=" * len(divider))
-    print("  REGRESSION REPORT")
-    print("=" * len(divider))
-    print(divider)
-    print(row_fmt.format(
-        "#", "Customer Message",
-        "V1", "V2", "Delta",
-        iw=INPUT_W, sw=STATUS_W,
-    ))
-    print(divider)
+    table = Table(title="Regression Report", show_lines=True)
+    table.add_column("#", style="bold")
+    table.add_column("Customer Message", max_width=48)
+    table.add_column("V1", justify="center")
+    table.add_column("V2", justify="center")
+    table.add_column("Delta", justify="center")
 
     v2_by_id = {r["id"]: r for r in v2_results}
     regressions, fixes = [], []
 
     for r1 in v1_results:
-        r2      = v2_by_id[r1["id"]]
-        snippet = (r1["input"][:INPUT_W - 3] + "...") if len(r1["input"]) > INPUT_W else r1["input"]
-        s1      = "PASS" if r1["passed"] else "FAIL"
-        s2      = "PASS" if r2["passed"] else "FAIL"
+        r2 = v2_by_id[r1["id"]]
+        snippet = (r1["input"][:45] + "...") if len(r1["input"]) > 48 else r1["input"]
+        s1 = (
+            "[bold green]PASS[/bold green]"
+            if r1["passed"]
+            else "[bold red]FAIL[/bold red]"
+        )
+        s2 = (
+            "[bold green]PASS[/bold green]"
+            if r2["passed"]
+            else "[bold red]FAIL[/bold red]"
+        )
 
+        # Determine state transitions between prompt versions
         if r1["passed"] and not r2["passed"]:
-            delta = "REGRESSED ✗"
+            delta = "[bold red]REGRESSED ✗[/bold red]"
             regressions.append((r1, r2))
         elif not r1["passed"] and r2["passed"]:
-            delta = "FIXED ✓"
+            delta = "[bold green]FIXED ✓[/bold green]"
             fixes.append((r1, r2))
         else:
-            delta = "same"
+            delta = "[dim]same[/dim]"
 
-        print(row_fmt.format(
-            r1["id"], snippet, s1, s2, delta,
-            iw=INPUT_W, sw=STATUS_W,
-        ))
+        table.add_row(str(r1["id"]), snippet, s1, s2, delta)
 
-    print(divider)
+    console.print(table)
+    console.print()
 
-    total   = len(v1_results)
+    total = len(v1_results)
     v1_pass = sum(1 for r in v1_results if r["passed"])
     v2_pass = sum(1 for r in v2_results if r["passed"])
 
-    print(f"\nSummary:")
-    print(f"  Prompt V1 : {v1_pass}/{total} passed")
-    print(f"  Prompt V2 : {v2_pass}/{total} passed")
-    print(f"  Regressions (V1 PASS → V2 FAIL) : {len(regressions)}")
-    print(f"  Fixes       (V1 FAIL → V2 PASS) : {len(fixes)}")
+    console.print("[bold]Summary:[/bold]")
+    console.print(f"  Prompt V1 : {v1_pass}/{total} passed")
+    console.print(f"  Prompt V2 : {v2_pass}/{total} passed")
+    console.print(f"  Regressions (V1 PASS → V2 FAIL) : {len(regressions)}")
+    console.print(f"  Fixes       (V1 FAIL → V2 PASS) : {len(fixes)}")
 
     if regressions:
-        print("\nRegression details:")
+        console.print(Rule("[bold red]Regression Details[/bold red]", style="red"))
         for r1, r2 in regressions:
-            print(f"\n  #{r1['id']:02d}  \"{r1['input']}\"")
-            print(f"       expected : {r1['expected']}")
-            print(f"       v1 got   : {r1['actual']}  ← PASS")
-            print(f"       v2 got   : {r2['actual']}  ← {r2['reason']}")
+            console.print(f"\n[bold]Test Case #{r1['id']:02d}[/bold]")
+            console.print(f"[dim]Expected:[/dim] {json.dumps(r1['expected'])}")
+
+            # Print the detailed inputs and outputs to diagnose the failure
+            display_model_input(PROMPT_V2, r1["input"])
+            display_model_output(json.dumps(r2["actual"]))
+            console.print(f"  [bold red]Failed Reason:[/bold red] {r2['reason']}\n")
 
 
 # ─── Entry Point ──────────────────────────────────────────────────────────────
 
+
 def main():
+    """Initializes the client and orchestrates the regression harness."""
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        raise SystemExit("Error: GEMINI_API_KEY environment variable is not set.")
+        console.print(
+            "[bold red]Error:[/bold red] GEMINI_API_KEY environment variable is not set."
+        )
+        raise SystemExit(1)
+
+    console.print(
+        Panel.fit(
+            "[bold yellow]Prompt Regression Harness[/bold yellow]\n"
+            "[dim]Evaluates classification prompt iterations against test cases.[/dim]\n"
+            "[dim]10 tests × 2 prompt versions[/dim]",
+            border_style="yellow",
+        )
+    )
+    console.print()
 
     client = genai.Client(api_key=api_key)
 
     show_prompt_diff()
 
-    v1_results = run_suite(client, PROMPT_V1, label="Prompt V1 (baseline)")
-    v2_results = run_suite(client, PROMPT_V2, label="Prompt V2 (+billing rule)")
+    v1_results = run_suite(client, PROMPT_V1, "Prompt V1 (baseline)", "cyan")
+    v2_results = run_suite(client, PROMPT_V2, "Prompt V2 (+billing rule)", "magenta")
 
     render_table(v1_results, v2_results)
 

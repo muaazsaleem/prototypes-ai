@@ -30,8 +30,16 @@ console = Console()
 
 
 def print_llm_interaction(prompt: str, response_text: str) -> None:
-    """Print the LLM input and response in standardized panels."""
-    # Model Input
+    """Prints the LLM input and response in standardized grey panels.
+
+    Args:
+        prompt: The user input string sent to the model.
+        response_text: The assistant's response string.
+
+    Side effects:
+        Prints formatted output to the terminal using rich.
+    """
+    # Model Input block
     input_elements = []
     role = "user"
     label_style = "bold blue"
@@ -55,7 +63,7 @@ def print_llm_interaction(prompt: str, response_text: str) -> None:
     )
     console.print()
 
-    # Model Response
+    # Model Response block
     wrapped_response = textwrap.fill(
         response_text, width=82, subsequent_indent="           "
     )
@@ -74,9 +82,10 @@ def print_llm_interaction(prompt: str, response_text: str) -> None:
     )
     console.print()
 
+
 # ── Configuration ──────────────────────────────────────────────────────────────
 
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gemini-2.0-flash"
 CHECKPOINT_FILE = "checkpoint.json"
 
 # The agent will complete this many steps successfully, then simulate a crash.
@@ -123,20 +132,44 @@ _client: genai.Client | None = None
 
 
 def get_client() -> genai.Client:
-    """Return the shared Gemini client, raising if not yet configured."""
+    """Returns the shared Gemini client, raising if not yet configured.
+
+    Returns:
+        The initialized genai.Client instance.
+
+    Raises:
+        RuntimeError: If configure_client() has not been called.
+    """
     if _client is None:
         raise RuntimeError("Call configure_client() before running the agent.")
     return _client
 
 
 def configure_client(api_key: str) -> None:
-    """Initialize the Gemini client with the given API key."""
+    """Initializes the Gemini client with the given API key.
+
+    Args:
+        api_key: The Google API key for Gemini.
+
+    Side effects:
+        Mutates the global _client variable.
+    """
     global _client
     _client = genai.Client(api_key=api_key)
 
 
 def call_model(prompt: str) -> str:
-    """Send a single prompt to Gemini and return the response text."""
+    """Sends a single prompt to Gemini and returns the response text.
+
+    Args:
+        prompt: The input text to send to the model.
+
+    Returns:
+        The stripped text response from the model.
+
+    Side effects:
+        Makes a network call to the Gemini API.
+    """
     response = get_client().models.generate_content(
         model=MODEL_NAME,
         contents=prompt,
@@ -145,10 +178,17 @@ def call_model(prompt: str) -> str:
 
 
 def build_prompt(step_index: int, prev_output: str) -> str:
-    """
-    Construct the LLM prompt for a given step.
+    """Constructs the LLM prompt for a given step.
+
     Step 0 uses only the task description; every subsequent step appends the
     previous step's output so the model can build on prior analysis.
+
+    Args:
+        step_index: The 0-based index of the current step.
+        prev_output: The text output from the previous step (if any).
+
+    Returns:
+        A formatted prompt string containing task, context, and instruction.
     """
     _, instruction = STEPS[step_index]
     if step_index == 0:
@@ -169,10 +209,17 @@ def build_prompt(step_index: int, prev_output: str) -> str:
 
 
 def save_checkpoint(completed_step: int, outputs: dict[int, str]) -> None:
-    """
-    Persist the agent's current state to disk immediately after a step completes.
+    """Persists the agent's current state to disk immediately after a step completes.
+
     The invariant is: checkpoint always reflects a fully consistent state —
     every step listed in it is genuinely done. This makes resumption safe.
+
+    Args:
+        completed_step: The index of the last successfully completed step.
+        outputs: A dictionary mapping step indices to their respective output text.
+
+    Side effects:
+        Writes a JSON file (checkpoint.json) to the current directory.
     """
     data = {
         "last_completed_step": completed_step,
@@ -186,7 +233,14 @@ def save_checkpoint(completed_step: int, outputs: dict[int, str]) -> None:
 
 
 def load_checkpoint() -> dict | None:
-    """Read checkpoint from disk. Returns None if no checkpoint file exists."""
+    """Reads the checkpoint from disk.
+
+    Returns:
+        The checkpoint data as a dictionary, or None if no file exists.
+
+    Side effects:
+        Reads from checkpoint.json if it exists.
+    """
     if not Path(CHECKPOINT_FILE).exists():
         return None
     with open(CHECKPOINT_FILE) as f:
@@ -194,7 +248,11 @@ def load_checkpoint() -> dict | None:
 
 
 def delete_checkpoint() -> None:
-    """Remove any existing checkpoint file (called at the start of a fresh run)."""
+    """Removes any existing checkpoint file from the filesystem.
+
+    Side effects:
+        Deletes checkpoint.json if it exists.
+    """
     if Path(CHECKPOINT_FILE).exists():
         Path(CHECKPOINT_FILE).unlink()
 
@@ -203,11 +261,15 @@ def delete_checkpoint() -> None:
 
 
 def run_with_checkpoint() -> None:
-    """
-    Start a fresh agent run with checkpointing enabled.
+    """Starts a fresh agent run with checkpointing enabled.
+
     The agent saves a checkpoint after every step, then intentionally crashes
     at KILL_AT_STEP so the user can see what gets preserved.
     Run `python main.py resume` after this to observe the recovery.
+
+    Side effects:
+        Deletes old checkpoints, makes API calls, writes new checkpoints,
+        and eventually exits the process with code 1.
     """
     console.print(
         Panel.fit(
@@ -275,9 +337,13 @@ def run_with_checkpoint() -> None:
 
 
 def resume_from_checkpoint() -> None:
-    """
-    Load the checkpoint written by `run` mode and continue from the next unfinished step.
+    """Resumes an agent run from the last saved checkpoint.
+
+    Loads the checkpoint written by `run` mode and continues from the next unfinished step.
     Steps already present in the checkpoint are skipped entirely — no repeated LLM calls.
+
+    Side effects:
+        Reads checkpoints, makes API calls, writes new checkpoints.
     """
     console.print(
         Panel.fit(
@@ -397,10 +463,13 @@ def resume_from_checkpoint() -> None:
 
 
 def run_without_checkpoint() -> None:
-    """
-    Run the same agent task WITHOUT writing any checkpoints.
+    """Runs the same agent task WITHOUT writing any checkpoints.
+
     After the same simulated crash, there is no state to recover — the agent
     must restart from step 1. This makes the wasted LLM calls explicit.
+
+    Side effects:
+        Makes API calls, prints comparison metrics.
     """
     console.print(
         Panel.fit(
@@ -443,7 +512,10 @@ def run_without_checkpoint() -> None:
             break
 
         console.print(
-            Rule(f"[bold]Run 1 - Step {i + 1}/{len(STEPS)}: {step_name}[/bold]", style="white")
+            Rule(
+                f"[bold]Run 1 - Step {i + 1}/{len(STEPS)}: {step_name}[/bold]",
+                style="white",
+            )
         )
         console.print()
 
@@ -478,7 +550,10 @@ def run_without_checkpoint() -> None:
         )
 
         console.print(
-            Rule(f"[bold]Run 2 - Step {i + 1}/{len(STEPS)}: {step_name}[/bold] {badge}", style="white")
+            Rule(
+                f"[bold]Run 2 - Step {i + 1}/{len(STEPS)}: {step_name}[/bold] {badge}",
+                style="white",
+            )
         )
         console.print()
 
@@ -532,6 +607,14 @@ def run_without_checkpoint() -> None:
 
 
 def main() -> None:
+    """Main entry point for the Checkpoint & Replay demonstration script.
+
+    Parses command line arguments, checks for API keys, and routes to the
+    appropriate execution mode.
+
+    Side effects:
+        Parses CLI args, prints errors if config is missing, executes sub-modes.
+    """
     parser = argparse.ArgumentParser(
         description="Checkpoint and Replay: Resilient multi-step AI agents",
         formatter_class=argparse.RawDescriptionHelpFormatter,

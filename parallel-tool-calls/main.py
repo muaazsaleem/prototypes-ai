@@ -14,7 +14,7 @@ import time
 
 from google import genai
 from google.genai import types
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
@@ -168,32 +168,84 @@ def detect_hallucination(text: str) -> list[tuple[str, str]]:
     return hits
 
 
-def print_contents(contents: list):
-    """Prints the conversation history following skill conventions."""
-    console.print(Rule("[bold]Current Conversation History[/bold]", style="white", align="left"))
+# ── Display Helpers ────────────────────────────────────────────────────────────
+
+
+def display_model_input(contents: list[types.Content]):
+    """Styles and prints the conversation history inside a grey panel."""
+    input_elements = []
+
     for content in contents:
-        role = content.role.upper()
-        color = "cyan" if role == "USER" else "magenta"
-        
+        # Map Gemini's "model" role to the requested "assistant" convention
+        display_role = "assistant" if content.role == "model" else content.role
+
+        if display_role == "user":
+            label_style = "bold blue"
+            content_style = "blue"
+        elif display_role == "assistant":
+            label_style = "bold green"
+            content_style = "green"
+        else:
+            label_style = "bold yellow"
+            content_style = "yellow"
+
+        text_parts = []
         for part in content.parts:
             if part.text:
-                console.print(f"\n[bold {color}]> {role}[/bold {color}]")
-                prefix = "[dim]Message:[/dim]"
-                wrapped = textwrap.fill(part.text.strip(), width=88, subsequent_indent="         ")
-                console.print(f"  {prefix} {wrapped}")
+                text_parts.append(part.text.strip())
             elif part.function_call:
-                fc = part.function_call
-                console.print(f"\n[bold {color}]> {role}[/bold {color}]")
-                prefix = "[dim]Action:[/dim]"
-                console.print(f"  {prefix} [bold yellow]CALLING TOOL:[/bold yellow] {fc.name}({fc.args})")
+                text_parts.append(
+                    f"[CALLING TOOL] {part.function_call.name}({part.function_call.args})"
+                )
             elif part.function_response:
-                fr = part.function_response
-                is_err = "error" in fr.response
-                res_color = "red" if is_err else "green"
-                console.print(f"\n[bold {color}]> {role}[/bold {color}]")
-                prefix = f"[dim]Result ([yellow]{fr.name}[/yellow]):[/dim]"
-                console.print(f"  {prefix} [{res_color}]{fr.response}[/{res_color}]")
+                res = str(part.function_response.response)
+                text_parts.append(f"[TOOL RESULT {part.function_response.name}] {res}")
+
+        content_text = "\n".join(text_parts)
+        indent = " " * (len(display_role) + 2)
+        wrapped = textwrap.fill(content_text, width=82, subsequent_indent=indent)
+
+        input_elements.append(
+            Text.assemble(
+                (f"{display_role.upper()}: ", label_style), (wrapped, content_style)
+            )
+        )
+        input_elements.append(Rule(style="bright_black"))
+
+    if input_elements:
+        input_elements.pop()  # Remove trailing rule
+
+    console.print(
+        Panel(
+            Group(*input_elements),
+            title="[bold bright_black]Model Input[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+        )
+    )
     console.print()
+
+
+def display_model_output(response_text: str):
+    """Styles and prints the final model response in a grey panel."""
+    wrapped_response = textwrap.fill(
+        response_text, width=82, subsequent_indent="           "
+    )
+    response_content = Text.assemble(
+        ("ASSISTANT: ", "bold green"), (wrapped_response, "italic")
+    )
+
+    console.print(
+        Panel(
+            response_content,
+            title="[bold bright_black]Model Response[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+            highlight=False,
+        )
+    )
+    console.print()
+
 
 # ── Phase runner (agentic loop) ───────────────────────────────────────────────
 
@@ -212,10 +264,12 @@ def run_phase(client: genai.Client, validate: bool) -> dict:
 
     while True:
         round_num += 1
-        console.print(Rule(f"[bold white]ROUND {round_num}[/bold white]", style="blue"))
-        print_contents(contents)
-        print("asking llm...")
-        
+        console.print(
+            Rule(f"[bold white]ROUND {round_num}[/bold white]", style="white")
+        )
+
+        display_model_input(contents)
+
         resp = client.models.generate_content(
             model=MODEL_NAME,
             contents=contents,
@@ -237,22 +291,22 @@ def run_phase(client: genai.Client, validate: bool) -> dict:
         validation_failed = False
 
         for part in fn_calls:
-            # Inspection of raw model output
-            console.print("[dim]Raw tool call part from model:[/dim]")
-            console.print(part.function_call)
-            
             fc = part.function_call
-            console.print(f"[dim]Executing tool [yellow]{fc.name}[/yellow] with [yellow]{fc.args}[/yellow]...[/dim]")
-            
+            console.print(f"[dim]Executing tool [yellow]{fc.name}[/yellow]...[/dim]")
+
             raw = TOOL_FN[fc.name](**dict(fc.args))
 
             # validation logic: if enabled, empty tool results trigger an immediate abort
             if validate and not raw:
-                console.print(f"  └── [bold red][VALIDATION FAILURE][/bold red] Aborting report generation.")
+                console.print(
+                    f"  └── [bold red][VALIDATION FAILURE][/bold red] Aborting report generation."
+                )
                 validation_failed = True
                 payload = {"error": "Critical data source failed validation."}
             else:
-                console.print(f"  └── [bold green][SUCCESS][/bold green] Result retrieved")
+                console.print(
+                    f"  └── [bold green][SUCCESS][/bold green] Result retrieved"
+                )
                 payload = raw
 
             all_stats.append(
@@ -328,9 +382,14 @@ def print_phase(heading: str, result: dict, validate: bool) -> bool:
     metrics.add_row("[bold]Total tool calls[/bold]", f"{result['total_calls']}")
     metrics.add_row("[bold]Tools with data[/bold]", f"{len(filled)}")
     metrics.add_row("[bold]Tools with empty result[/bold]", f"{len(empty)}")
-    metrics.add_row("[bold]First-call latency[/bold]", f"[dim]{result['t_first_s']:.2f}s[/dim]")
-    metrics.add_row("[bold]Total latency[/bold]", f"[dim]{result['t_total_s']:.2f}s[/dim]")
+    metrics.add_row(
+        "[bold]First-call latency[/bold]", f"[dim]{result['t_first_s']:.2f}s[/dim]"
+    )
+    metrics.add_row(
+        "[bold]Total latency[/bold]", f"[dim]{result['t_total_s']:.2f}s[/dim]"
+    )
     console.print(metrics)
+    console.print()
 
     # Tool Results Table
     results_table = Table(
@@ -346,34 +405,40 @@ def print_phase(heading: str, result: dict, validate: bool) -> bool:
     results_table.add_column("Result Detail")
 
     for s in stats:
-        mark = "[green]✓[/green]" if not s["is_empty"] else "[red]✗[/red]"
+        mark = (
+            "[bold green]✓[/bold green]"
+            if not s["is_empty"]
+            else "[bold red]✗[/bold red]"
+        )
         note = (
             f"{s['field_count']} field(s)"
             if not s["is_empty"]
-            else "[yellow]EMPTY — silent failure[/yellow]"
+            else "[bold yellow]EMPTY — silent failure[/bold yellow]"
         )
         results_table.add_row(mark, str(s["round"]), s["name"], note)
 
     console.print(results_table)
+    console.print()
 
     if validate and empty:
         names = ", ".join(s["name"] for s in empty)
-        console.print(f"\n[bold yellow]Validation:[/bold yellow] error injected for → {names}")
+        console.print(
+            f"[bold yellow]Validation:[/bold yellow] error injected for → {names}\n"
+        )
 
     # Model Response
-    console.print("\n[bold cyan]> Model Response[/bold cyan]")
-    prefix = "[dim]Gemini:[/dim]"
-    wrapped = textwrap.fill(
-        result["model_text"].strip(), width=88, subsequent_indent="         "
-    )
-    console.print(f"  {prefix} {wrapped}")
+    display_model_output(result["model_text"])
 
     # Hallucination Check
     hits = detect_hallucination(result["model_text"])
-    console.print("\n[bold]Hallucination check[/bold] [dim](analyst claims without data):[/dim]")
+    console.print(
+        "[bold]Hallucination check[/bold] [dim](analyst claims without data):[/dim]"
+    )
     if hits:
         for label, snippet in hits:
-            console.print(f'    [bold red]![/bold red] [red]{label:<22}[/red]  [dim]"{snippet}"[/dim]')
+            console.print(
+                f'    [bold red]![/bold red] [red]{label:<22}[/red]  [dim]"{snippet}"[/dim]'
+            )
         hallucinated = True
     else:
         console.print("    [dim]– no analyst-specific claims detected[/dim]")
@@ -408,21 +473,29 @@ def main():
     )
     console.print()
 
-    console.print("[bold cyan]-- Tools registered ------------------------------[/bold cyan]")
-    console.print("  1. [bold]get_stock_price[/bold]      [dim]— price & market metrics[/dim]")
-    console.print("  2. [bold]get_analyst_ratings[/bold]  [dim]— consensus & price targets[/dim]  [red]← WILL FAIL[/red]")
-    console.print("  3. [bold]get_recent_news[/bold]      [dim]— latest headlines[/dim]")
+    console.print(
+        "[bold cyan]-- Tools registered ------------------------------[/bold cyan]"
+    )
+    console.print(
+        "  1. [bold]get_stock_price[/bold]      [dim]— price & market metrics[/dim]"
+    )
+    console.print(
+        "  2. [bold]get_analyst_ratings[/bold]  [dim]— consensus & price targets[/dim]  [red]← WILL FAIL[/red]"
+    )
+    console.print(
+        "  3. [bold]get_recent_news[/bold]      [dim]— latest headlines[/dim]"
+    )
     console.print()
 
     # ── Phase 1 ───────────────────────────────────────────────────────────────
-    console.print("[yellow]Running Phase 1 (no validation) …[/yellow]", end="\r")
+    console.print("[yellow]Running Phase 1 (no validation) …[/yellow]")
     r1 = run_phase(client, validate=False)
     h1 = print_phase(
         "PHASE 1 — NO VALIDATION  (empty result passed silently)", r1, validate=False
     )
 
     # ── Phase 2 ───────────────────────────────────────────────────────────────
-    console.print("[yellow]Running Phase 2 (with validation) …[/yellow]", end="\r")
+    console.print("[yellow]Running Phase 2 (with validation) …[/yellow]")
     r2 = run_phase(client, validate=True)
     h2 = print_phase(
         "PHASE 2 — WITH VALIDATION  (empty result replaced with error)",
@@ -432,6 +505,7 @@ def main():
 
     # ── Withheld data disclosure ───────────────────────────────────────────────
     console.print(Rule("[bold]Withheld Data Disclosure[/bold]", style="white"))
+    console.print()
     withheld = _ANALYST_DATA_WITHHELD.get(TICKER, {})
     withheld_table = Table(show_header=False, padding=(0, 2), show_edge=False)
     for k, v in withheld.items():
@@ -441,6 +515,7 @@ def main():
 
     # ── Comparison summary ─────────────────────────────────────────────────────
     console.print(Rule("[bold yellow]Overall Summary[/bold yellow]", style="yellow"))
+    console.print()
     summary_table = Table(show_lines=True)
     summary_table.add_column("Phase", style="bold")
     summary_table.add_column("Hallucination", justify="center")
@@ -468,11 +543,11 @@ def main():
     if h1 and not h2:
         verdict = "[bold green]VALIDATION ELIMINATED HALLUCINATION[/bold green]"
     elif not h1 and not h2:
-        verdict = (
-            "[bold green]MODEL HANDLED EMPTY GRACEFULLY IN BOTH — VALIDATION STILL GUARANTEES IT[/bold green]"
-        )
+        verdict = "[bold green]MODEL HANDLED EMPTY GRACEFULLY IN BOTH — VALIDATION STILL GUARANTEES IT[/bold green]"
     elif h1 and h2:
-        verdict = "[bold red]BOTH PHASES HALLUCINATED — STRONGER VALIDATION NEEDED[/bold red]"
+        verdict = (
+            "[bold red]BOTH PHASES HALLUCINATED — STRONGER VALIDATION NEEDED[/bold red]"
+        )
     else:
         verdict = "[bold yellow]PHASE 2 INTRODUCED NEW ISSUES — REVIEW VALIDATION LOGIC[/bold yellow]"
 

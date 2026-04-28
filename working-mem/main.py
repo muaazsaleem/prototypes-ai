@@ -17,7 +17,7 @@ import time
 
 from google import genai
 from google.genai import types, errors
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
@@ -27,7 +27,7 @@ console = Console()
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-2.0-flash"
 
 # Artificial context budget. Real Gemini has ~1 M tokens; setting this low
 # makes the overflow visible within 10 steps so we can demonstrate it live.
@@ -187,7 +187,14 @@ EXPECTED_KEYWORDS = ["pg_restore", "snapshot_20240115_pre_migration", "4 hours"]
 
 
 def build_contents(messages: list[dict]) -> list[types.Content]:
-    """Converts a list of message dictionaries into Gemini API Content objects."""
+    """Converts a list of message dictionaries into Gemini API Content objects.
+
+    Args:
+        messages: A list of dicts with 'role' and 'content' keys.
+
+    Returns:
+        A list of types.Content objects formatted for the Gemini API.
+    """
     return [
         types.Content(role=m["role"], parts=[types.Part(text=m["content"])])
         for m in messages
@@ -195,28 +202,61 @@ def build_contents(messages: list[dict]) -> list[types.Content]:
 
 
 def chat(messages: list[dict], silent: bool = True) -> tuple[str, int]:
-    """Sends a conversation history to Gemini and returns the model response and token usage.
+    """Sends conversation history to Gemini, returning the text and token usage.
 
-    Includes retry logic for 429 Rate Limit errors. If silent is False, prints
-    the formatted conversation turns and model response to the terminal.
+    Args:
+        messages: The full conversation history up to this point.
+        silent: If False, logs the interaction panels to the terminal.
+
+    Returns:
+        A tuple of (response text, total prompt tokens used).
+
+    Side effects:
+        Makes API calls, pauses for rate limits, prints formatted panels.
     """
     if not silent:
-        console.print(Rule("[bold blue]Model Input[/bold blue]", style="blue"))
+        # Construct and print the Model Input panel with the entire history
+        input_elements = []
         for msg in messages:
             role = msg["role"]
             content = msg["content"]
-            if role == "user":
-                label = "[bold blue]user[/bold blue]"
-                wrapped = textwrap.fill(content, width=88, subsequent_indent="         ")
-                console.print(f"  {label}:    [blue]{wrapped}[/blue]")
-            elif role == "model":
-                label = "[bold green]assistant[/bold green]"
-                wrapped = textwrap.fill(content, width=88, subsequent_indent="            ")
-                console.print(f"  {label}: [green]{wrapped}[/green]")
 
+            if role == "system":
+                label_style, content_style = "dim", "dim"
+            elif role == "user":
+                label_style, content_style = "bold blue", "blue"
+            elif role == "model":
+                role = "assistant"
+                label_style, content_style = "bold green", "green"
+            else:
+                label_style, content_style = "bold yellow", "yellow"
+
+            indent = " " * (len(role) + 2)
+            wrapped = textwrap.fill(content, width=82, subsequent_indent=indent)
+
+            input_elements.append(
+                Text.assemble(
+                    (f"{role.upper()}: ", label_style), (wrapped, content_style)
+                )
+            )
+            input_elements.append(Rule(style="bright_black"))
+
+        if input_elements:
+            input_elements.pop()
+
+        console.print(
+            Panel(
+                Group(*input_elements),
+                title="[bold bright_black]Model Input[/bold bright_black]",
+                border_style="bright_black",
+                padding=(1, 2),
+            )
+        )
+        console.print()
+
+    # Retry loop to gracefully handle rate limit (429) errors
     for attempt in range(5):
         try:
-            # Add delay to stay within rate limits
             time.sleep(API_DELAY)
             response = client.models.generate_content(
                 model=GEMINI_MODEL,
@@ -228,25 +268,52 @@ def chat(messages: list[dict], silent: bool = True) -> tuple[str, int]:
                 ),
             )
             reply = response.text.strip()
-            
+
             if not silent:
-                console.print(Rule("[bold green]Model Response[/bold green]", style="green"))
-                console.print(f"[italic]{reply}[/italic]", highlight=False)
+                # Print the distinct Model Output panel
+                wrapped_response = textwrap.fill(
+                    reply, width=82, subsequent_indent="           "
+                )
+                response_content = Text.assemble(
+                    ("ASSISTANT: ", "bold green"), (wrapped_response, "italic")
+                )
+                console.print(
+                    Panel(
+                        response_content,
+                        title="[bold bright_black]Model Response[/bold bright_black]",
+                        border_style="bright_black",
+                        padding=(1, 2),
+                        highlight=False,
+                    )
+                )
                 console.print()
-                
+
             return reply, response.usage_metadata.prompt_token_count
         except errors.ClientError as e:
             if "429" in str(e) and attempt < 4:
                 wait = (attempt + 1) * 20
-                console.print(f"  [dim yellow]Rate limited. Waiting {wait}s (attempt {attempt+1}/5)...[/dim yellow]")
+                console.print(
+                    f"  [dim yellow]Rate limited. Waiting {wait}s (attempt {attempt+1}/5)...[/dim yellow]"
+                )
                 time.sleep(wait)
                 continue
             raise e
+
     return "", 0
 
 
 def count_tokens_only(messages: list[dict]) -> int:
-    """Calculates the total token count for a list of messages without generating content."""
+    """Calculates the total token count for a message list without generating content.
+
+    Args:
+        messages: The conversation history.
+
+    Returns:
+        The integer token count as measured by the API.
+
+    Side effects:
+        Makes a metadata-only network call to the Gemini API.
+    """
     response = client.models.count_tokens(
         model=GEMINI_MODEL,
         contents=build_contents(messages),
@@ -257,8 +324,14 @@ def count_tokens_only(messages: list[dict]) -> int:
 def summarise_history(completed_steps: list[dict]) -> str:
     """Compresses completed investigation steps into a single dense memory block.
 
-    This uses a separate LLM call with a low temperature to ensure factual
-    retention. Returns the compressed string.
+    Args:
+        completed_steps: A list of dicts detailing steps and findings.
+
+    Returns:
+        A dense bullet-point summary retaining key facts.
+
+    Side effects:
+        Prints strategy intent and makes an API call.
     """
     step_text = "\n\n".join(
         f"Step {s['num']}: {s['name']}\n"
@@ -273,39 +346,74 @@ def summarise_history(completed_steps: list[dict]) -> str:
         "No prose — dense bullet points only. Every token must carry information.\n\n"
         + step_text
     )
-    
-    # Show the compression request
-    console.print(Rule("[bold magenta]Compression Strategy[/bold magenta]", style="magenta"))
-    console.print(f"  [dim]Input:[/dim] verbose history of {len(completed_steps)} steps.")
+
+    console.print(
+        Rule("[bold magenta]Compression Strategy[/bold magenta]", style="magenta")
+    )
+    console.print(
+        f"  [dim]Input:[/dim] verbose history of {len(completed_steps)} steps."
+    )
     console.print(f"  [dim]Goal:[/dim] dense bullet points, zero information loss.")
     console.print()
-    
+
+    # Render the input panel for the summarization call
+    input_elements = [
+        Text.assemble(
+            ("USER: ", "bold blue"),
+            (textwrap.fill(prompt, width=82, subsequent_indent="      "), "blue"),
+        )
+    ]
+    console.print(
+        Panel(
+            Group(*input_elements),
+            title="[bold bright_black]Model Input[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+        )
+    )
+    console.print()
+
     messages = [{"role": "user", "content": prompt}]
-    
-    # We use a lower temperature for summarization to keep it factual.
     summary = ""
+
     for attempt in range(5):
         try:
             time.sleep(API_DELAY)
             response = client.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=build_contents(messages),
-                config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=800),
+                config=types.GenerateContentConfig(
+                    temperature=0.1, max_output_tokens=800
+                ),
             )
             summary = response.text.strip()
             break
         except errors.ClientError as e:
             if "429" in str(e) and attempt < 4:
                 wait = (attempt + 1) * 20
-                console.print(f"  [dim yellow]Rate limited. Waiting {wait}s (attempt {attempt+1}/5)...[/dim yellow]")
+                console.print(
+                    f"  [dim yellow]Rate limited. Waiting {wait}s (attempt {attempt+1}/5)...[/dim yellow]"
+                )
                 time.sleep(wait)
                 continue
             raise e
 
-    console.print(Rule("[bold green]Compressed Memory Output[/bold green]", style="green"))
-    console.print(f"[italic]{summary}[/italic]", highlight=False)
+    # Render the output panel for the summarization call
+    wrapped_response = textwrap.fill(summary, width=82, subsequent_indent="           ")
+    response_content = Text.assemble(
+        ("ASSISTANT: ", "bold green"), (wrapped_response, "italic")
+    )
+    console.print(
+        Panel(
+            response_content,
+            title="[bold bright_black]Model Response[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+            highlight=False,
+        )
+    )
     console.print()
-    
+
     return summary
 
 
@@ -313,7 +421,15 @@ def summarise_history(completed_steps: list[dict]) -> str:
 
 
 def token_bar(count: int, width: int = 20) -> Text:
-    """Returns a color-coded Text progress bar representing context window usage."""
+    """Returns a color-coded Text progress bar representing context window usage.
+
+    Args:
+        count: The current token count.
+        width: The visual length of the bar.
+
+    Returns:
+        A formatted rich Text object tracking threshold severity.
+    """
     pct = min(count / CONTEXT_BUDGET, 1.0)
     filled = round(pct * width)
     bar = "█" * filled + "░" * (width - filled)
@@ -322,29 +438,55 @@ def token_bar(count: int, width: int = 20) -> Text:
 
 
 def check_recall(answer: str) -> bool:
-    """Verifies if the model's answer contains all expected critical keywords."""
+    """Verifies if the model's answer contains all expected critical keywords.
+
+    Args:
+        answer: The string response to evaluate.
+
+    Returns:
+        True if all global EXPECTED_KEYWORDS are present (case-insensitive).
+    """
     lower = answer.lower()
     return all(kw.lower() in lower for kw in EXPECTED_KEYWORDS)
 
 
 def print_recall_result(label: str, answer: str, success: bool) -> None:
-    """Prints the results of a recall verification test to the terminal."""
-    console.print(f"\n[bold cyan]-- {label} --------------------------------------[/bold cyan]")
+    """Prints the results of a recall verification test to the terminal.
+
+    Args:
+        label: A string describing the test scenario.
+        answer: The verbatim answer provided by the model.
+        success: Boolean indicating if verification passed.
+
+    Side effects:
+        Prints structured feedback blocks to standard output.
+    """
+    console.print(
+        f"\n[bold cyan]-- {label} --------------------------------------[/bold cyan]"
+    )
     prefix = "[dim]Model Answer:[/dim]"
     wrapped = textwrap.fill(answer, width=88, subsequent_indent="               ")
     console.print(f"  {prefix} [italic]{wrapped}[/italic]", highlight=False)
-    
-    verdict = "[bold green]RETAINED[/bold green]" if success else "[bold red]LOST[/bold red]"
-    console.print(f"  [bold]Result:[/bold] {verdict} [dim](keywords: {', '.join(EXPECTED_KEYWORDS)})[/dim]")
+
+    verdict = (
+        "[bold green]RETAINED[/bold green]" if success else "[bold red]LOST[/bold red]"
+    )
+    console.print(
+        f"  [bold]Result:[/bold] {verdict} [dim](keywords: {', '.join(EXPECTED_KEYWORDS)})[/dim]"
+    )
 
 
 # ── Phase 1: Naive Agent ──────────────────────────────────────────────────────
 
 
 def run_naive_phase() -> tuple[list[dict], list[dict]]:
-    """Runs the naive simulation where the entire conversation history is sent to the model.
+    """Runs the naive simulation appending to history until context overflows.
 
-    Returns a log of token usage per step and the final list of messages.
+    Returns:
+        A tuple of (token metric logs per step, cumulative message history).
+
+    Side effects:
+        Makes API calls and renders progress bars.
     """
     console.print(Rule("[bold]Phase 1: Naive Agent[/bold]", style="white"))
     console.print()
@@ -367,7 +509,9 @@ def run_naive_phase() -> tuple[list[dict], list[dict]]:
         bar = token_bar(prompt_tokens)
         flag = "  [bold red]OVER BUDGET[/bold red]" if over else ""
 
-        console.print(f"  Step [bold]{i:02d}[/bold]  [dim]{step['name']:<28}[/dim]  ", end="")
+        console.print(
+            f"  Step [bold]{i:02d}[/bold]  [dim]{step['name']:<28}[/dim]  ", end=""
+        )
         console.print(bar, end="")
         console.print(flag)
 
@@ -380,10 +524,13 @@ def run_naive_phase() -> tuple[list[dict], list[dict]]:
 
 
 def run_managed_phase() -> tuple[list[dict], list[dict], int, int]:
-    """Runs the managed simulation where history is compressed after a set number of steps.
+    """Runs the managed simulation compressing history mid-flight to save context.
 
-    Returns a log of token usage, the final messages, and the token counts
-    immediately before and after the compression event.
+    Returns:
+        A tuple of (token metric logs, final message history, tokens before compression, tokens after compression).
+
+    Side effects:
+        Makes multiple API calls, swaps message history, prints progress UI.
     """
     console.print(Rule(f"[bold]Phase 2: Managed Agent[/bold]", style="white"))
     console.print()
@@ -398,8 +545,10 @@ def run_managed_phase() -> tuple[list[dict], list[dict], int, int]:
         if i == SUMMARISE_AFTER + 1:
             tokens_before = token_log[-1]["tokens"]
 
-            console.print(f"\n  [bold yellow]→ Context at {tokens_before:,} tokens — "
-                          f"compressing steps 1–{SUMMARISE_AFTER}...[/bold yellow]")
+            console.print(
+                f"\n  [bold yellow]→ Context at {tokens_before:,} tokens — "
+                f"compressing steps 1–{SUMMARISE_AFTER}...[/bold yellow]"
+            )
 
             summary = summarise_history(completed_steps)
 
@@ -418,8 +567,10 @@ def run_managed_phase() -> tuple[list[dict], list[dict], int, int]:
             tokens_after = count_tokens_only(messages)
             saved = tokens_before - tokens_after
             pct = int(saved / tokens_before * 100) if tokens_before else 0
-            console.print(f"  [dim]Context Shift:[/dim] [yellow]{tokens_before:,}[/yellow] → [green]{tokens_after:,}[/green] tokens "
-                          f"([bold green]{pct}% reduction[/bold green])\n")
+            console.print(
+                f"  [dim]Context Shift:[/dim] [yellow]{tokens_before:,}[/yellow] → [green]{tokens_after:,}[/green] tokens "
+                f"([bold green]{pct}% reduction[/bold green])\n"
+            )
 
         user_msg = (
             f"[Step {i}: {step['name']}]\n"
@@ -434,21 +585,29 @@ def run_managed_phase() -> tuple[list[dict], list[dict], int, int]:
         over = prompt_tokens > CONTEXT_BUDGET
         bar = token_bar(prompt_tokens)
         flag = "  [bold red]OVER BUDGET[/bold red]" if over else ""
-        marker = "  [dim yellow]← compressed here[/dim yellow]" if i == SUMMARISE_AFTER else ""
+        marker = (
+            "  [dim yellow]← compressed here[/dim yellow]"
+            if i == SUMMARISE_AFTER
+            else ""
+        )
 
-        console.print(f"  Step [bold]{i:02d}[/bold]  [dim]{step['name']:<28}[/dim]  ", end="")
+        console.print(
+            f"  Step [bold]{i:02d}[/bold]  [dim]{step['name']:<28}[/dim]  ", end=""
+        )
         console.print(bar, end="")
         console.print(flag + marker)
 
         token_log.append({"step": i, "name": step["name"], "tokens": prompt_tokens})
 
         if i <= SUMMARISE_AFTER:
-            completed_steps.append({
-                "num": i,
-                "name": step["name"],
-                "tool_output": step["tool_output"],
-                "finding": reply,
-            })
+            completed_steps.append(
+                {
+                    "num": i,
+                    "name": step["name"],
+                    "tool_output": step["tool_output"],
+                    "finding": reply,
+                }
+            )
 
     return token_log, messages, tokens_before, tokens_after
 
@@ -465,12 +624,27 @@ def print_summary_table(
     tokens_before: int,
     tokens_after: int,
 ) -> None:
-    """Prints a comparison table of token usage and critical state retention."""
+    """Prints the comparative results of both simulations as a markdown table.
+
+    Args:
+        naive_log: Usage metrics from the naive phase.
+        managed_log: Usage metrics from the managed phase.
+        recall_full: Whether naive full context retained facts.
+        recall_truncated: Whether naive truncated context retained facts.
+        recall_managed: Whether compressed managed context retained facts.
+        tokens_before: Context size prior to compression.
+        tokens_after: Context size following compression.
+
+    Side effects:
+        Outputs rich Tables to standard out.
+    """
     console.print()
     console.print(Rule("[bold yellow]Overall Summary[/bold yellow]", style="yellow"))
     console.print()
 
-    table = Table(title=f"Token Usage Per Step (budget: {CONTEXT_BUDGET:,})", show_lines=True)
+    table = Table(
+        title=f"Token Usage Per Step (budget: {CONTEXT_BUDGET:,})", show_lines=True
+    )
     table.add_column("Step", justify="center", style="bold", min_width=4)
     table.add_column("Name", min_width=26)
     table.add_column("Naive", justify="center", min_width=12)
@@ -481,7 +655,11 @@ def print_summary_table(
         delta = n["tokens"] - m["tokens"]
         n_color = "red" if n["tokens"] > CONTEXT_BUDGET else "white"
         m_color = "red" if m["tokens"] > CONTEXT_BUDGET else "white"
-        delta_str = f"[green]−{delta:,}[/green]" if delta > 0 else f"[red]+{abs(delta):,}[/red]" if delta < 0 else "[dim]—[/dim]"
+        delta_str = (
+            f"[green]−{delta:,}[/green]"
+            if delta > 0
+            else f"[red]+{abs(delta):,}[/red]" if delta < 0 else "[dim]—[/dim]"
+        )
         table.add_row(
             str(n["step"]),
             n["name"],
@@ -493,7 +671,10 @@ def print_summary_table(
     console.print(table)
     console.print()
 
-    v_table = Table(title="Critical State Retention (Recall of Step 1 Rollback Facts)", show_lines=True)
+    v_table = Table(
+        title="Critical State Retention (Recall of Step 1 Rollback Facts)",
+        show_lines=True,
+    )
     v_table.add_column("Scenario", min_width=48)
     v_table.add_column("Result", justify="center", min_width=16)
 
@@ -501,24 +682,38 @@ def print_summary_table(
         return "[bold green]RETAINED[/bold green]" if v else "[bold red]LOST[/bold red]"
 
     v_table.add_row("Naive Agent — full history (pass)", verdict(recall_full))
-    v_table.add_row("Naive Agent — history overflowed (fail)", verdict(recall_truncated))
+    v_table.add_row(
+        "Naive Agent — history overflowed (fail)", verdict(recall_truncated)
+    )
     v_table.add_row("Managed Agent — compressed memory (pass)", verdict(recall_managed))
     console.print(v_table)
     console.print()
 
     if recall_managed and not recall_truncated:
-        console.print("  [bold green]Verdict: Memory management preserved critical state that naive overflow destroyed.[/bold green]")
+        console.print(
+            "  [bold green]Verdict: Memory management preserved critical state that naive overflow destroyed.[/bold green]"
+        )
     elif recall_managed:
-        console.print("  [bold green]Verdict: Managed agent successfully retained all critical state.[/bold green]")
+        console.print(
+            "  [bold green]Verdict: Managed agent successfully retained all critical state.[/bold green]"
+        )
     else:
-        console.print("  [bold red]Verdict: Summarisation was too lossy — critical state not retained.[/bold red]")
+        console.print(
+            "  [bold red]Verdict: Summarisation was too lossy — critical state not retained.[/bold red]"
+        )
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 
 def main() -> None:
-    """Orchestrates the naive and managed phases to demonstrate context management."""
+    """Orchestrates the naive and managed phases to demonstrate context management.
+
+    Executes both workflows, performs recall verifications, and outputs summaries.
+
+    Side effects:
+        Invokes extensive API activity and renders all terminal UI.
+    """
     console.print(
         Panel.fit(
             "[bold yellow]Working Memory: Context Overflow & Memory Management[/bold yellow]\n"
@@ -535,16 +730,24 @@ def main() -> None:
 
     # Verification A
     full_q = naive_messages + [{"role": "user", "content": VERIFICATION_QUESTION}]
-    reply_full, _ = chat(full_q)
+    reply_full, _ = chat(full_q, silent=False)
     success_full = check_recall(reply_full)
-    print_recall_result("Verification A: Naive (Full Context)", reply_full, success_full)
+    print_recall_result(
+        "Verification A: Naive (Full Context)", reply_full, success_full
+    )
 
     # Verification B (Simulated Overflow)
     # We drop the first 3 steps (6 messages) to simulate them falling out of the window.
-    truncated = naive_messages[6:] + [{"role": "user", "content": VERIFICATION_QUESTION}]
-    reply_truncated, _ = chat(truncated)
+    truncated = naive_messages[6:] + [
+        {"role": "user", "content": VERIFICATION_QUESTION}
+    ]
+    reply_truncated, _ = chat(truncated, silent=False)
     success_truncated = check_recall(reply_truncated)
-    print_recall_result("Verification B: Naive (Overflowed/Truncated)", reply_truncated, success_truncated)
+    print_recall_result(
+        "Verification B: Naive (Overflowed/Truncated)",
+        reply_truncated,
+        success_truncated,
+    )
 
     console.print()
 
@@ -554,9 +757,11 @@ def main() -> None:
 
     # Verification C
     managed_q = managed_messages + [{"role": "user", "content": VERIFICATION_QUESTION}]
-    reply_managed, _ = chat(managed_q)
+    reply_managed, _ = chat(managed_q, silent=False)
     success_managed = check_recall(reply_managed)
-    print_recall_result("Verification C: Managed (Compressed Memory)", reply_managed, success_managed)
+    print_recall_result(
+        "Verification C: Managed (Compressed Memory)", reply_managed, success_managed
+    )
 
     # Final Summary
     print_summary_table(

@@ -18,10 +18,11 @@ catches compounding errors before they reach the final answer.
 
 import os
 import time
+import textwrap
 
 from google import genai
 from dotenv import load_dotenv
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
@@ -84,7 +85,12 @@ PROBLEMS = [
             "You swap the Banana for an Eggplant. Finally, you take out the Date. "
             "List exactly the items currently in the box."
         ),
-        "correct_answers": ["apple, eggplant", "eggplant, apple", "apple and eggplant", "eggplant and apple"],
+        "correct_answers": [
+            "apple, eggplant",
+            "eggplant, apple",
+            "apple and eggplant",
+            "eggplant and apple",
+        ],
         "wrong_answer": "Apple, Banana, Date (fails to apply all state changes sequentially)",
         "explanation": "Add A,B,C -> [A,B,C]. Rem A, Add D -> [B,C,D]. Rem C, Add A -> [A,B,D]. Swap B for E -> [A,D,E]. Rem D -> [A,E].",
     },
@@ -106,8 +112,13 @@ PROBLEMS = [
 
 # ── Prompt strategies ──────────────────────────────────────────────────────────
 
+
 def direct_prompt(question: str) -> str:
-    """No reasoning — just give the answer."""
+    """Returns a prompt requesting a direct answer without reasoning.
+
+    Forces the model to skip intermediate steps, which often leads to errors
+    in multi-step logic problems.
+    """
     return (
         f"{question}\n\n"
         "Answer in one short sentence only. Do not show any working or reasoning."
@@ -115,7 +126,11 @@ def direct_prompt(question: str) -> str:
 
 
 def cot_prompt(question: str) -> str:
-    """Explicit chain-of-thought before the answer."""
+    """Returns a prompt requesting step-by-step reasoning (Chain-of-Thought).
+
+    Encourages the model to process intermediate steps explicitly,
+    improving reliability for complex reasoning tasks.
+    """
     return (
         f"{question}\n\n"
         "Think step by step. Show each step of your reasoning clearly, "
@@ -125,22 +140,69 @@ def cot_prompt(question: str) -> str:
 
 # ── API helpers ────────────────────────────────────────────────────────────────
 
+
 def ask(prompt: str) -> str:
+    """Sends a prompt to Gemini and returns the verbatim response text.
+
+    Displays the model input and output in styled Rich panels for transparency.
+    """
     client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+    # Display model input
+    input_elements = [
+        Text.assemble(("USER: ", "bold blue"), (prompt, "blue")),
+        Rule(style="bright_black"),
+    ]
+    console.print(
+        Panel(
+            Group(*input_elements),
+            title="[bold bright_black]Model Input[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+        )
+    )
+
     response = client.models.generate_content(model=MODEL_NAME, contents=prompt)
-    return response.text.strip()
+    response_text = response.text.strip()
+
+    # Display model response
+    wrapped_response = textwrap.fill(
+        response_text, width=82, subsequent_indent="           "
+    )
+    response_content = Text.assemble(
+        ("ASSISTANT: ", "bold green"), (wrapped_response, "italic")
+    )
+    console.print(
+        Panel(
+            response_content,
+            title="[bold bright_black]Model Response[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+            highlight=False,
+        )
+    )
+    console.print()
+
+    return response_text
 
 
 def is_correct(response: str, correct_answers: list[str]) -> bool:
-    """Return True if any accepted answer string appears in the model response."""
+    """Check if the model response contains any of the accepted correct answers.
+
+    Performs a case-insensitive search within the response text.
+    """
     response_lower = response.lower()
     return any(ans.lower() in response_lower for ans in correct_answers)
 
 
 # ── Display helpers ────────────────────────────────────────────────────────────
 
+
 def accuracy_bar(correct: int, total: int, width: int = 20) -> Text:
-    """Render a filled/empty block bar with colour based on accuracy."""
+    """Render a filled/empty block bar with colour based on accuracy percentage.
+
+    Green for >= 80%, yellow for >= 50%, and red otherwise.
+    """
     pct = correct / total
     filled = round(pct * width)
     bar = "█" * filled + "░" * (width - filled)
@@ -148,21 +210,30 @@ def accuracy_bar(correct: int, total: int, width: int = 20) -> Text:
     return Text(f"{bar}  {correct}/{total}  ({int(pct*100)}%)", style=color)
 
 
-def run_strategy(prompt_fn, label: str, problem: dict) -> tuple[list[bool], list[float]]:
-    """Run one prompt strategy RUNS_PER_PROBLEM times and return (pass/fail list, time list)."""
+def run_strategy(
+    prompt_fn, label: str, problem: dict
+) -> tuple[list[bool], list[float]]:
+    """Run one prompt strategy multiple times and capture results and latency.
+
+    Iterates RUNS_PER_PROBLEM times, updating the console with progress dots.
+    """
     results = []
     times = []
     for run in range(1, RUNS_PER_PROBLEM + 1):
         start_t = time.perf_counter()
         response = ask(prompt_fn(problem["question"]))
         elapsed = time.perf_counter() - start_t
-        
+
         passed = is_correct(response, problem["correct_answers"])
         results.append(passed)
         times.append(elapsed)
-        
+
         dot = "[green]●[/green]" if passed else "[red]●[/red]"
-        console.print(f"  {label} #{run:02d}: {dot} [dim]{elapsed:4.1f}s[/dim]", end="   ", highlight=False)
+        console.print(
+            f"  {label} #{run:02d}: {dot} [dim]{elapsed:4.1f}s[/dim]",
+            end="   ",
+            highlight=False,
+        )
         if run % 4 == 0:
             console.print()
         time.sleep(0.4)  # gentle on rate limits
@@ -173,10 +244,18 @@ def run_strategy(prompt_fn, label: str, problem: dict) -> tuple[list[bool], list
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
+
 def run_demo():
+    """Main entry point for the CoT vs Direct Answer comparison prototype.
+
+    Iterates through a set of logic problems, running both strategies
+    and displaying comparative metrics and a final summary.
+    """
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        console.print("[bold red]Error:[/bold red] GEMINI_API_KEY not set. Add it to a .env file.")
+        console.print(
+            "[bold red]Error:[/bold red] GEMINI_API_KEY not set. Add it to a .env file."
+        )
         raise SystemExit(1)
 
     console.print(
@@ -192,17 +271,30 @@ def run_demo():
     summary: list[dict] = []
 
     for i, problem in enumerate(PROBLEMS, start=1):
-        console.print(Rule(f"[bold]Problem {i} / {len(PROBLEMS)}: {problem['title']}[/bold]", style="white"))
+        console.print(
+            Rule(
+                f"[bold]Problem {i} / {len(PROBLEMS)}: {problem['title']}[/bold]",
+                style="white",
+            )
+        )
         console.print(f"[bold]Q:[/bold] {problem['question']}")
-        console.print(f"[bold]Correct answer:[/bold] [green]{problem['correct_answers'][0]}[/green]")
-        console.print(f"[bold]Common wrong answer:[/bold] [red]{problem['wrong_answer']}[/red]")
+        console.print(
+            f"[bold]Correct answer:[/bold] [green]{problem['correct_answers'][0]}[/green]"
+        )
+        console.print(
+            f"[bold]Common wrong answer:[/bold] [red]{problem['wrong_answer']}[/red]"
+        )
         console.print(f"[dim]{problem['explanation']}[/dim]\n")
 
-        console.print("[bold cyan]── Direct prompts ──────────────────────────[/bold cyan]")
+        console.print(
+            "[bold cyan]── Direct prompts ──────────────────────────[/bold cyan]"
+        )
         direct_results, direct_times = run_strategy(direct_prompt, "Direct", problem)
         console.print()
 
-        console.print("[bold magenta]── Chain-of-Thought prompts ─────────────────[/bold magenta]")
+        console.print(
+            "[bold magenta]── Chain-of-Thought prompts ─────────────────[/bold magenta]"
+        )
         cot_results, cot_times = run_strategy(cot_prompt, "CoT   ", problem)
         console.print()
 
@@ -211,7 +303,9 @@ def run_demo():
         direct_avg_t = sum(direct_times) / len(direct_times)
         cot_avg_t = sum(cot_times) / len(cot_times)
 
-        table = Table(show_header=True, header_style="bold", padding=(0, 2), show_edge=False)
+        table = Table(
+            show_header=True, header_style="bold", padding=(0, 2), show_edge=False
+        )
         table.add_column("Strategy", width=10)
         table.add_column("Score", width=6, justify="center")
         table.add_column("Avg Time", width=10, justify="right")
@@ -233,19 +327,23 @@ def run_demo():
         console.print(table)
         console.print()
 
-        summary.append({
-            "title": problem["title"],
-            "direct": direct_acc,
-            "cot": cot_acc,
-            "direct_t": direct_avg_t,
-            "cot_t": cot_avg_t
-        })
+        summary.append(
+            {
+                "title": problem["title"],
+                "direct": direct_acc,
+                "cot": cot_acc,
+                "direct_t": direct_avg_t,
+                "cot_t": cot_avg_t,
+            }
+        )
 
     # ── Overall summary ────────────────────────────────────────────────────────
     console.print(Rule("[bold yellow]Overall Summary[/bold yellow]", style="yellow"))
 
     total_runs = RUNS_PER_PROBLEM * len(PROBLEMS)
-    summary_table = Table(show_header=True, header_style="bold", padding=(0, 2), show_edge=False)
+    summary_table = Table(
+        show_header=True, header_style="bold", padding=(0, 2), show_edge=False
+    )
     summary_table.add_column("Problem", min_width=24)
     summary_table.add_column("Direct", justify="center")
     summary_table.add_column("CoT", justify="center")
