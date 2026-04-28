@@ -1,0 +1,67 @@
+{
+  "entries": [
+    {
+      "keywords": [
+        "name",
+        "alex",
+        "user"
+      ],
+      "fact": "The user's name is Alex."
+    },
+    {
+      "keywords": [
+        "backend",
+        "engineer",
+        "fintech",
+        "startup",
+        "job"
+      ],
+      "fact": "The user is a backend engineer at a fintech startup."
+    },
+    {
+      "keywords": [
+        "user",
+        "works",
+        "python",
+        "mostly"
+      ],
+      "fact": "The user mostly works in Python."
+    },
+    {
+      "keywords": [
+        "user",
+        "exploring",
+        "rust"
+      ],
+      "fact": "The user has been exploring Rust."
+    },
+    {
+      "keywords": [
+        "user",
+        "exploring",
+        "rust",
+        "performance",
+        "critical"
+      ],
+      "fact": "The user is exploring Rust for performance-critical parts."
+    },
+    {
+      "keywords": [
+        "building",
+        "fraud detection",
+        "system",
+        "real-time"
+      ],
+      "fact": "The user is building a real-time fraud detection system."
+    },
+    {
+      "keywords": [
+        "transactions",
+        "per second",
+        "10k",
+        "performance"
+      ],
+      "fact": "The user's system needs to handle 10,000 transactions per second."
+    }
+  ]
+}
