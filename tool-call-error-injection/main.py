@@ -48,6 +48,26 @@ def get_weather(city: str) -> dict:
         }
 
 
+# Define the function declaration for the model
+get_weather_function = {
+    "name": "get_weather",
+    "description": "Returns simulated weather data or a 503 error on subsequent calls.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "city": {
+                "type": "string",
+                "description": "The city to get the weather for.",
+            },
+        },
+        "required": ["city"],
+    },
+}
+
+# Configure the tools
+tools = types.Tool(function_declarations=[get_weather_function])
+
+
 # --------------------------------------------------------------------------- #
 # UI Helpers
 # --------------------------------------------------------------------------- #
@@ -55,7 +75,9 @@ def get_weather(city: str) -> dict:
 
 def accuracy_bar(correct: int, total: int, width: int = 20) -> Text:
     """Generates a text-based progress bar indicating success rate."""
-    pct = correct / total if total > 0 else 0
+    if total == 0:
+        return Text("N/A (0 calls)", style="dim")
+    pct = correct / total
     filled = round(pct * width)
     bar = "X" * filled + "." * (width - filled)
     color = "green" if pct >= 0.8 else "yellow" if pct >= 0.5 else "red"
@@ -159,7 +181,7 @@ def run_agent(
 
     config = types.GenerateContentConfig(
         system_instruction=system_prompt,
-        tools=[get_weather],
+        tools=[tools],
         # We handle tool loops manually, so disable automatic calling
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
     )
@@ -235,12 +257,12 @@ def run_agent(
 
 
 def main():
-    """Executes both scenarios and outputs a comparative summary table."""
+    """Executes scenarios and outputs a comparative summary table."""
     console.print(
         Panel.fit(
             "[bold yellow]Tool Call Error Injection & Handling[/bold yellow]\n"
             "[dim]Demonstrating model transparency when upstream APIs fail.[/dim]\n"
-            "[dim]2 scenarios × 1 tool × 2 cities[/dim]",
+            "[dim]3 scenarios: No Guidance, Explicit Guidance, Irrelevant Prompt[/dim]",
             border_style="yellow",
         )
     )
@@ -266,6 +288,15 @@ def main():
         "state code and details. Do not guess."
     )
     b = run_agent(b_prompt, QUESTION, "Scenario B", "magenta")
+
+    # Scenario C
+    console.print(
+        "[bold green]-- Scenario C: Irrelevant Prompt --------------------------[/bold green]"
+    )
+    IRRELEVANT_QUESTION = "Can you write a short haiku about a cat?"
+    c = run_agent(
+        "You are a helpful weather assistant.", IRRELEVANT_QUESTION, "Scenario C", "green"
+    )
 
     # Overall Summary
     console.print(Rule("[bold yellow]Overall Summary[/bold yellow]", style="yellow"))
@@ -293,6 +324,12 @@ def main():
         str(b["rounds"]),
         accuracy_bar(b["tool_successes"], b["tool_calls"]),
         reported_503(b["response"]),
+    )
+    table.add_row(
+        "[green]Scenario C[/green]",
+        str(c["rounds"]),
+        accuracy_bar(c["tool_successes"], c["tool_calls"]),
+        reported_503(c["response"]),
     )
 
     console.print(table)
