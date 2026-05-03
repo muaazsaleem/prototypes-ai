@@ -1,7 +1,9 @@
 ragas
-google-generativeai
+google-genai
 datasets
 pandas
 rich
 black
 python-dotenv
+chromadb
+langchain-google-genai

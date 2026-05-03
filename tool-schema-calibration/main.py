@@ -1,88 +1,100 @@
 import os
 import time
 import textwrap
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from rich.console import Console, Group
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
+# Initialize the Rich console for professional terminal output
 console = Console()
 
 # Configuration
-MODEL_NAME = "gemini-2.5-flash"
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+# The new SDK often prefers the slug without the "models/" prefix.
+MODEL_ID = "gemini-2.5-flash"
+
+# Migration Note: The new google-genai SDK uses genai.Client for all interactions.
+# This replaces the previous global configuration pattern (genai.configure).
+client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+
+# We define tools using the new SDK's types to maintain precise control over descriptions.
+# This allows us to simulate "Loose" vs "Tight" schema calibration.
 
 LOOSE_TOOLS = [
-    genai.types.FunctionDeclaration(
+    # Migration Note: Tools are now defined using types.FunctionDeclaration and types.Schema.
+    # This provides a more structured and type-safe way to define tool interfaces.
+    types.FunctionDeclaration(
         name="get_weather_current",
         description="Get weather information for a location.",
-        parameters={
-            "type": "OBJECT",
-            "properties": {
-                "location": {"type": "STRING", "description": "The city name."}
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={
+                "location": types.Schema(type="STRING", description="The city name.")
             },
-            "required": ["location"],
-        },
+            required=["location"],
+        ),
     ),
-    genai.types.FunctionDeclaration(
+    types.FunctionDeclaration(
         name="get_weather_forecast",
         description="Get weather data for a city.",
-        parameters={
-            "type": "OBJECT",
-            "properties": {
-                "location": {"type": "STRING", "description": "The city name."}
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={
+                "location": types.Schema(type="STRING", description="The city name.")
             },
-            "required": ["location"],
-        },
+            required=["location"],
+        ),
     ),
-    genai.types.FunctionDeclaration(
+    types.FunctionDeclaration(
         name="get_weather_history",
         description="Fetch weather records for a specific area.",
-        parameters={
-            "type": "OBJECT",
-            "properties": {
-                "location": {"type": "STRING", "description": "The city name."}
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={
+                "location": types.Schema(type="STRING", description="The city name.")
             },
-            "required": ["location"],
-        },
+            required=["location"],
+        ),
     ),
 ]
 
 TIGHT_TOOLS = [
-    genai.types.FunctionDeclaration(
+    # Disambiguated descriptions help the model distinguish between similar tools.
+    types.FunctionDeclaration(
         name="get_weather_current",
         description="Get CURRENT, REAL-TIME weather conditions for a specific location. Use only for queries about 'now', 'today', or current status.",
-        parameters={
-            "type": "OBJECT",
-            "properties": {
-                "location": {"type": "STRING", "description": "The city name."}
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={
+                "location": types.Schema(type="STRING", description="The city name.")
             },
-            "required": ["location"],
-        },
+            required=["location"],
+        ),
     ),
-    genai.types.FunctionDeclaration(
+    types.FunctionDeclaration(
         name="get_weather_forecast",
         description="Get FUTURE weather predictions and forecasts. Use only for queries about 'tomorrow', 'next week', 'upcoming', or future dates.",
-        parameters={
-            "type": "OBJECT",
-            "properties": {
-                "location": {"type": "STRING", "description": "The city name."}
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={
+                "location": types.Schema(type="STRING", description="The city name.")
             },
-            "required": ["location"],
-        },
+            required=["location"],
+        ),
     ),
-    genai.types.FunctionDeclaration(
+    types.FunctionDeclaration(
         name="get_weather_history",
         description="Fetch HISTORICAL weather records from the past. Use only for queries about yesterday, last year, or specific past dates.",
-        parameters={
-            "type": "OBJECT",
-            "properties": {
-                "location": {"type": "STRING", "description": "The city name."}
+        parameters=types.Schema(
+            type="OBJECT",
+            properties={
+                "location": types.Schema(type="STRING", description="The city name.")
             },
-            "required": ["location"],
-        },
+            required=["location"],
+        ),
     ),
 ]
 
@@ -144,24 +156,24 @@ QUERIES = [
 
 
 def accuracy_bar(correct, total, width=20):
-    """Returns a Rich Text object representing a visual accuracy bar.
+    """Generates a Rich Text accuracy bar with color-coded success levels.
 
-    The bar's color depends on the percentage: green for high accuracy,
-    yellow for moderate, and red for low.
+    The color transitions from red (<50%) to yellow (>=50%) to green (>=80%).
+    Returns a rich.text.Text object ready for console printing.
     """
     pct = correct / total
     filled = round(pct * width)
-    bar = "X" * filled + "." * (
-        width - filled
-    )  # X marks the progress, . marks the remaining
+    # create a simple ASCII-style bar with background markers
+    bar = "X" * filled + "." * (width - filled)
     color = "green" if pct >= 0.8 else "yellow" if pct >= 0.5 else "red"
     return Text(f"{bar}  {correct}/{total}  ({int(pct*100)}%)", style=color)
 
 
 def display_llm_exchange(query, response_text):
-    """Renders a formatted view of the user query and model response to the terminal.
+    """Renders a visual representation of the LLM input and output.
 
-    Side effect: Prints multiple panels using the global console object.
+    Uses Rich panels and rules to create a clear separation between the
+    user's query and the model's generated response.
     """
     messages = [{"role": "user", "content": query}]
     input_elements = []
@@ -171,6 +183,7 @@ def display_llm_exchange(query, response_text):
             msg["content"] if isinstance(msg["content"], str) else str(msg["content"])
         )
 
+        # assign specific styles based on message roles
         if role == "system":
             label_style = "dim"
             content_style = "dim"
@@ -196,7 +209,7 @@ def display_llm_exchange(query, response_text):
         input_elements.append(Rule(style="bright_black"))
 
     if input_elements:
-        input_elements.pop()  # Remove trailing rule
+        input_elements.pop()  # remove the last rule for cleaner aesthetics
 
     console.print(
         Panel(
@@ -229,17 +242,22 @@ def display_llm_exchange(query, response_text):
 
 
 def run_calibration(strategy_label, tools, color):
-    """Runs all test queries against the model using a specific set of tools.
+    """Evaluates the model's tool selection accuracy for a set of tools.
 
-    Returns the count of correct tool selections and the total query count.
-    Side effect: Prints real-time progress and timing data to the console.
+    Runs every query in QUERIES through the model and compares the selected
+    tool against the expected one. Returns the number of correct hits and total count.
     """
     console.print(
         f"[bold {color}]-- {strategy_label} Schema Calibration --------------------------------------[/bold {color}]"
     )
     console.print()
 
-    model = genai.GenerativeModel(MODEL_NAME, tools=tools)
+    # Migration Note: GenerateContentConfig replaces the tool list in the generation call.
+    # It allows for more complex configurations including system instructions and tool settings.
+    tool_config = types.GenerateContentConfig(
+        tools=[types.Tool(function_declarations=tools)]
+    )
+
     correct = 0
     total = len(QUERIES)
     results = []
@@ -247,16 +265,21 @@ def run_calibration(strategy_label, tools, color):
     for i, (query, expected) in enumerate(QUERIES):
         start_time = time.time()
         try:
-            response = model.generate_content(query)
+            # Migration Note: client.models.generate_content is the new entry point for generation.
+            # This is significantly different from the previous model.generate_content() call.
+            response = client.models.generate_content(
+                model=MODEL_ID, contents=query, config=tool_config
+            )
             elapsed = time.time() - start_time
 
-            # look for the first function call in the model response parts
-            tool_calls = response.candidates[0].content.parts
+            # Identify which tool the model selected by inspecting the response parts
             selected_tool = None
-            for part in tool_calls:
-                if part.function_call:
-                    selected_tool = part.function_call.name
-                    break
+            if response.candidates and response.candidates[0].content.parts:
+                for part in response.candidates[0].content.parts:
+                    # Migration Note: Check for function_call on the part object directly.
+                    if part.function_call:
+                        selected_tool = part.function_call.name
+                        break
 
             passed = selected_tool == expected
             if passed:
@@ -268,14 +291,14 @@ def run_calibration(strategy_label, tools, color):
             if i == 0:
                 display_llm_exchange(query, f"Selected tool: {selected_tool}")
 
-            # output a compact status dot to track progress across 50 runs
+            # output a compact status dot to track progress visually
             dot = "[green]o[/green]" if passed else "[red]o[/red]"
             console.print(
                 f"  Run #{i+1:02d}: {dot} [dim]{elapsed:4.1f}s[/dim]",
                 end="   ",
                 highlight=False,
             )
-            # break into a new line every five runs for readability
+            # break into a new line every five runs for terminal readability
             if (i + 1) % 5 == 0:
                 console.print()
         except Exception as e:
@@ -287,10 +310,9 @@ def run_calibration(strategy_label, tools, color):
 
 
 def main():
-    """Entry point to compare model performance between vague and specific tool schemas.
+    """Entry point to compare model performance across different schema strategies.
 
-    Executes both 'Loose' and 'Tight' calibration suites and prints a summary
-    table showing the accuracy delta.
+    Orchestrates the calibration runs and displays a summary table with the results.
     """
     console.print(
         Panel.fit(
@@ -302,19 +324,20 @@ def main():
     )
     console.print()
 
-    # measure baseline with ambiguous tool descriptions
+    # run the baseline strategy with vague descriptions
     loose_correct, total = run_calibration("Loose", LOOSE_TOOLS, "cyan")
     console.print(Rule("[bold]Intermediate Results[/bold]", style="white"))
     console.print(f"Loose Accuracy: ", end="")
     console.print(accuracy_bar(loose_correct, total))
     console.print()
 
-    # measure performance with disambiguated descriptions
+    # run the optimized strategy with disambiguated descriptions
     tight_correct, _ = run_calibration("Tight", TIGHT_TOOLS, "magenta")
 
     console.print(Rule("[bold yellow]Overall Summary[/bold yellow]", style="yellow"))
     console.print()
 
+    # build the final comparison table
     table = Table(title="Calibration Results", show_lines=True)
     table.add_column("Strategy", style="bold", min_width=24)
     table.add_column("Score", justify="center")
@@ -331,7 +354,7 @@ def main():
         accuracy_bar(tight_correct, total),
     )
 
-    # calculate how many more queries the 'Tight' strategy got right
+    # calculate the performance lift between strategies
     lift = tight_correct - loose_correct
     lift_str = (
         f"[green]+{lift}[/green]"
@@ -345,7 +368,7 @@ def main():
     console.print(table)
     console.print()
 
-    # provide a final assessment based on the score difference
+    # determine the final verdict based on the delta
     if lift > 5:
         verdict = "[bold green]Significant Improvement![/bold green] Tightening schemas clearly reduces LLM confusion."
     elif lift > 0:

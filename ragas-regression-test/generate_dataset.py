@@ -1,19 +1,17 @@
 import json
 import os
-import google.generativeai as genai
 from typing import List, Dict
+from google import genai
 
-# Configure Gemini
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-model = genai.GenerativeModel("gemini-2.5-flash")
+# Initialize the Gemini Client
+client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 
 def generate_batch(batch_size: int, domain: str) -> List[Dict]:
-    """Generates a batch of RAG evaluation samples using the Gemini API.
+    """Generates a batch of query/answer/context triples using Gemini.
 
-    Makes a network call to Gemini. Returns a list of dictionaries, each containing
-    a question, ground_truth, and a list of contexts. Returns an empty list if
-    the response cannot be parsed as valid JSON.
+    Sends a structured prompt to the Gemini model to generate synthetic RAG data
+    in JSON format. Handles Markdown cleaning and JSON parsing.
     """
     prompt = f"""
     Generate {batch_size} realistic RAG (Retrieval-Augmented Generation) evaluation samples for the domain: {domain}.
@@ -25,10 +23,13 @@ def generate_batch(batch_size: int, domain: str) -> List[Dict]:
     Return ONLY a JSON list of objects.
     """
 
-    response = model.generate_content(prompt)
+    # Using the new google-genai SDK method
+    response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+
     try:
-        # Clean the response to remove Markdown code blocks before parsing
+        # Clean the response to ensure it's valid JSON
         text = response.text.strip()
+        # Remove Markdown code block markers if present
         if text.startswith("```json"):
             text = text[7:]
         if text.endswith("```"):
@@ -40,10 +41,10 @@ def generate_batch(batch_size: int, domain: str) -> List[Dict]:
 
 
 def main():
-    """Orchestrates the dataset generation process in batches.
+    """Orchestrates the generation of a 100-sample dataset.
 
-    Repeatedly calls generate_batch until the total_samples target is met.
-    Saves the resulting dataset to 'dataset.json' in the current directory.
+    Batches requests to the Gemini API and saves the final consolidated list
+    to 'dataset.json'.
     """
     domain = "AWS Cloud Infrastructure and DevOps Support"
     total_samples = 100
@@ -54,13 +55,13 @@ def main():
 
     while len(dataset) < total_samples:
         needed = total_samples - len(dataset)
-        # Ensure the last batch doesn't exceed the required total
+        # Calculate the size for the current batch
         current_batch = min(batch_size, needed)
         batch = generate_batch(current_batch, domain)
         dataset.extend(batch)
         print(f"Progress: {len(dataset)}/{total_samples}")
 
-    # Slice the dataset to exactly total_samples in case the model over-generated
+    # Save only up to the requested total samples
     with open("dataset.json", "w") as f:
         json.dump(dataset[:total_samples], f, indent=4)
 

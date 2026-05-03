@@ -1,45 +1,45 @@
 # Semantic Cache Threshold Tuning Prototype
 
-This prototype demonstrates the concept of **Semantic Caching** and how to calibrate the **Similarity Threshold** to balance performance (Hit Rate) and quality (Accuracy/Precision).
+This prototype is a calibration tool designed for the **Applied AI Course**. it demonstrates how to tune the similarity threshold for a semantic cache to balance system performance (Hit Rate) with response quality (Accuracy).
 
-## Concept Overview
+## 1. What this Prototype Does
+The prototype simulates a production-grade semantic cache environment. It measures how effectively a cache can identify "duplicate" intents while rejecting "traps" (queries that look similar but have different meanings).
 
-A Semantic Cache stores LLM responses and retrieves them for subsequent queries that are semantically similar, even if the phrasing is different. The "tightness" of this matching is controlled by a threshold (usually cosine similarity).
+- **Objective**: Find the "Optimal" similarity threshold where we maximize the number of cached responses served without returning incorrect information to the user.
+- **Outcome**: A calibration artifact (table and graph) that shows the exact trade-off curve between system efficiency and precision.
 
-- **High Threshold (e.g., 0.95):** High accuracy, but low hit rate (only exact or near-exact matches).
-- **Low Threshold (e.g., 0.70):** High hit rate, but risky accuracy (might retrieve responses for different intents).
+## 2. How it Works
+The system follows a three-phase execution model:
 
-## Features
+### Phase A: Dataset Generation
+The script uses **Gemini 2.5 Flash** to generate a synthetic test suite of 500 queries:
+1.  **Seeds**: Original queries on specific topics.
+2.  **Paraphrases**: Rephrased versions of the seeds (these **must** hit the cache).
+3.  **Near-Misses**: Queries on the same topic but with different intents (these **must** miss the cache).
 
-- **Synthetic Dataset Generation:** Generates 500 queries including "Seeds", "Paraphrases" (valid hits), and "Near-misses" (intent traps).
-- **Automated Sweep:** Sweeps thresholds from 0.70 to 0.95 to find the "elbow" of the curve.
-- **Calibration Artifact:** Generates a `calibration_curve.png` plot and a summary table with recommendations.
-- **Modern Terminal UI:** Uses `rich` for professional, styled output.
+### Phase B: Embedding & Vectorization
+It converts all 500 queries into high-dimensional numerical vectors using the **`gemini-embedding-2`** model. This allows us to calculate the mathematical "closeness" (Cosine Similarity) between any two queries.
 
-## Prerequisites
+### Phase C: The Threshold Sweep
+The prototype iterates through similarity thresholds from **0.70 to 0.95**. For each threshold, it:
+1.  Simulates a "First-In" cache population.
+2.  Calculates the **Hit Rate**: How many queries were served from cache.
+3.  Calculates **Accuracy (Precision)**: How many of those hits were *actually* the correct intent (Seed vs. Paraphrase) vs. how many were "false positives" (Seed vs. Near-Miss).
 
-- Python 3.10+
-- `GEMINI_API_KEY` set in your environment.
+## 3. How to Read the Calibration
+When the script finishes, you will see a **Sensitivity Analysis Table** and a `calibration_curve.png`.
 
-## Installation
+### Interpreting the Metrics
+- **Hit Rate (The Efficiency Metric)**: Higher is better. It represents the % of traffic that never hits your expensive LLM/Database.
+- **Accuracy (The Quality Metric)**: Higher is better. It represents the % of time the cache returned the *correct* answer.
 
-```bash
-pip install -r requirements.txt
-```
+### Identifying the Zones
+- **The Risky Zone (Threshold < 0.80)**: High Hit Rate, but Accuracy drops sharply. This means the cache is "hallucinating" matches and giving users answers to the wrong questions.
+- **The Suboptimal Zone (Threshold > 0.92)**: High Accuracy, but Hit Rate is very low. You are paying for an LLM even when the user is asking something you've already answered.
+- **The Optimal Zone**: The "Elbow" of the curve. This is usually the highest Hit Rate that maintains **>95% Accuracy**. In this prototype, this typically lands around **0.82 - 0.88**.
 
-## Running the Prototype
-
-```bash
-python main.py
-```
-
-## Outputs
-
-1. **Terminal Stats:** A live sweep of thresholds showing Hit Rate and Accuracy.
-2. **Sensitivity Analysis Table:** A final report suggesting the "Optimal" vs "Risky" zones.
-3. **`calibration_curve.png`:** A plot showing the tradeoff between performance and precision.
-4. **`queries.json`:** The generated dataset for reproducibility.
-
-## Calibration Insight for Students
-
-Look for the point where **Accuracy** starts to drop sharply while **Hit Rate** gains are marginal. This is typically the sweet spot for your production system. In most RAG/LLM applications, this falls between **0.88 and 0.92**.
+## 4. Steps to Run
+1.  Ensure `GEMINI_API_KEY` is set in your environment.
+2.  Install dependencies: `pip install -r requirements.txt`
+3.  Run the sweep: `python main.py`
+4.  Examine `calibration_curve.png` for the visual trade-off.

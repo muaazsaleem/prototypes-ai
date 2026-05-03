@@ -7,88 +7,127 @@ from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
-import google.generativeai as genai
-from ragas import evaluate
-from ragas.metrics import context_precision, faithfulness
-from datasets import Dataset
 import textwrap
 from rich.console import Group
 
-# Configure Gemini
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+# Import SDKs
+from google import genai
+import chromadb
+from chromadb import Documents, EmbeddingFunction, Embeddings
+
+# Import Ragas and LangChain evaluation dependencies
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+from datasets import Dataset
+from ragas import evaluate
+from ragas.metrics import ContextPrecision, Faithfulness
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+
+# Silence ChromaDB telemetry
+os.environ["CHROMA_TELEMETRY"] = "false"
+os.environ["ANONYMIZED_TELEMETRY"] = "false"
+
+# Initialize the generative AI Client
+client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 console = Console()
 
 
-class GeminiRagasWrapper:
-    """Wrapper for Gemini to be used with Ragas evaluation."""
+from tenacity import retry, stop_after_attempt, wait_exponential
 
-    def __init__(self, model_name="gemini-2.5-flash"):
-        """Initializes the wrapper with a specific Gemini model."""
-        self.model = genai.GenerativeModel(model_name)
+class FixedGoogleEmbeddings(GoogleGenerativeAIEmbeddings):
+    """Overrides the LangChain embedding class to fix batching issues and add retry logic."""
+    @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=2, max=10))
+    def embed_query(self, text: str) -> list[float]:
+        return super().embed_query(text)
 
-    async def generate_text(self, prompt: str) -> str:
-        """Generates text from a prompt using Gemini.
+    def embed_documents(self, texts):
+        return [self.embed_query(t) for t in texts]
 
-        This method is a simplified wrapper for Ragas integration,
-        using asyncio.to_thread to run the synchronous generate_content call.
-        """
-        # This is a simplified wrapper for Ragas integration
-        response = await asyncio.to_thread(self.model.generate_content, prompt)
-        return response.text
+class GeminiEmbeddingFunction(EmbeddingFunction):
+    """Custom embedding function for ChromaDB utilizing Google GenAI."""
+
+    def __init__(self):
+        """Initializes the fixed LangChain wrapper for Google embeddings."""
+        self.embeddings = FixedGoogleEmbeddings(model="models/gemini-embedding-2")
+
+    def __call__(self, input: Documents) -> Embeddings:
+        """Embeds a list of strings iteratively to avoid API list-as-single-prompt bugs."""
+        return self.embeddings.embed_documents(input)
 
 
-class MockRAG:
-    """Simulates a RAG pipeline with retrieval and reranking."""
+class RealRAG:
+    """A real RAG pipeline utilizing ChromaDB for retrieval."""
 
     def __init__(self, dataset):
-        """Initializes the mock pipeline with a dataset and the Gemini model."""
-        self.dataset = dataset
-        self.model = genai.GenerativeModel("gemini-2.5-flash")
+        """Initializes ChromaDB, creates a collection, and embeds all dataset contexts."""
+        self.chroma_client = chromadb.Client()
+        self.collection = self.chroma_client.create_collection(
+            name="rag_docs", embedding_function=GeminiEmbeddingFunction()
+        )
+
+        console.print("[dim]Building ChromaDB Knowledge Base...[/dim]")
+
+        # Flatten all contexts to form a unique knowledge base
+        unique_contexts = set()
+        for item in dataset:
+            for ctx in item["contexts"]:
+                unique_contexts.add(ctx)
+
+        docs = list(unique_contexts)
+        ids = [f"doc_{i}" for i in range(len(docs))]
+
+        # Add to ChromaDB in batches to respect payload size limits
+        batch_size = 100
+        for i in range(0, len(docs), batch_size):
+            self.collection.add(
+                documents=docs[i : i + batch_size], ids=ids[i : i + batch_size]
+            )
+        console.print(
+            f"[dim]Embedded and added {len(docs)} unique documents to ChromaDB.[/dim]\n"
+        )
 
     def retrieve(self, question: str, cutoff: int) -> list:
-        """Simulates retrieval of context snippets.
+        """Retrieves the top 'cutoff' most relevant documents from ChromaDB."""
+        results = self.collection.query(query_texts=[question], n_results=cutoff)
+        # return the list of retrieved context strings
+        return results["documents"][0] if results["documents"] else []
 
-        Searches the dataset for a matching question and returns the top 'cutoff'
-        contexts associated with it.
-        """
-        # In a real system, this would be a vector search + reranker
-        # Here we just take the contexts from the dataset and mock the reranking cutoff
-        for item in self.dataset:
-            if item["question"] == question:
-                return item["contexts"][:cutoff]
-        return []
+    @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=2, max=10))
+    async def _safe_generate(self, prompt: str) -> str:
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash", contents=prompt
+        )
+        return response.text
 
-    async def generate_answer(self, question: str, contexts: list) -> str:
-        """Generates an answer based on provided contexts.
-
-        Constructs a prompt with the question and contexts, logs the interaction,
-        and returns the LLM's generated response.
-        """
+    async def generate_answer(
+        self, question: str, contexts: list, log_interaction: bool = False
+    ) -> str:
+        """Generates an answer based on provided contexts using Google GenAI."""
         context_str = "\n".join([f"- {c}" for c in contexts])
         prompt = f"Answer the following question using ONLY the provided context.\n\nQuestion: {question}\n\nContext:\n{context_str}"
 
-        # Log input for terminal style (simplified)
-        self._log_llm_interaction("user", prompt)
+        if log_interaction:
+            self._log_llm_interaction("user", prompt)
 
-        response = await asyncio.to_thread(self.model.generate_content, prompt)
-        answer = response.text
+        answer = await self._safe_generate(prompt)
 
-        self._log_llm_interaction("assistant", answer)
+        if log_interaction:
+            self._log_llm_interaction("assistant", answer)
         return answer
 
     def _log_llm_interaction(self, role, content):
-        """Logs LLM interaction in a styled panel using the rich library.
-
-        Formats the message with appropriate styles based on the role (user/assistant)
-        and prints a title-boxed panel to the console.
-        """
+        """Logs LLM interaction in a styled panel using the rich library."""
         if role == "user":
             label_style = "bold blue"
             content_style = "blue"
-            
+
             wrapped = textwrap.fill(content, width=82, subsequent_indent="      ")
-            text_element = Text.assemble((f"USER: ", label_style), (wrapped, content_style))
-            
+            text_element = Text.assemble(
+                (f"USER: ", label_style), (wrapped, content_style)
+            )
+
             console.print(
                 Panel(
                     Group(text_element),
@@ -99,10 +138,11 @@ class MockRAG:
             )
             console.print()
         else:
-            wrapped_response = textwrap.fill(content, width=82, subsequent_indent="           ")
+            wrapped_response = textwrap.fill(
+                content, width=82, subsequent_indent="           "
+            )
             response_content = Text.assemble(
-                ("ASSISTANT: ", "bold green"),
-                (wrapped_response, "italic")
+                ("ASSISTANT: ", "bold green"), (wrapped_response, "italic")
             )
 
             console.print(
@@ -118,86 +158,88 @@ class MockRAG:
 
 
 async def run_evaluation(rag_pipeline, dataset, cutoff):
-    """Runs evaluation for a specific reranker cutoff and returns simulated metrics.
-
-    Iterates through the dataset, retrieves contexts, and generates answers.
-    Logs the first interaction and shows progress dots for subsequent samples.
-    """
+    """Runs retrieval, generation, and actual Ragas evaluation."""
     results = []
     total = len(dataset)
 
-    console.print(f"[dim]Processing {total} samples...[/dim]")
+    console.print(f"[dim]Running Retrieval & Generation for {total} samples...[/dim]")
 
     for i, item in enumerate(dataset):
         question = item["question"]
         ground_truth = item["ground_truth"]
+
+        # Perform actual vector retrieval
         contexts = rag_pipeline.retrieve(question, cutoff)
 
-        # Only log the first interaction to keep output clean
+        # Only log the very first interaction to keep the console clean
         show_log = i == 0
-
-        if show_log:
-            answer = await rag_pipeline.generate_answer(question, contexts)
-        else:
-            # For speed in prototype, we'll generate a short answer
-            # In a real run, this would be a full LLM call
-            answer = f"Mocked answer for sample {i+1} using {len(contexts)} contexts."
+        answer = await rag_pipeline.generate_answer(
+            question, contexts, log_interaction=show_log
+        )
 
         results.append(
             {
-                "question": question,
-                "answer": answer,
-                "contexts": contexts,
-                "ground_truth": ground_truth,
+                "user_input": question,
+                "response": answer,
+                "retrieved_contexts": contexts,
+                "reference": ground_truth,
             }
         )
 
-        # Progress dots: green circle if context count matches cutoff, red x otherwise
-        passed = len(contexts) == cutoff
-        dot = "[green]o[/green]" if passed else "[red]x[/red]"
-        console.print(dot, end="", highlight=False)
+        # Progress tracking
+        console.print("[green]o[/green]", end="", highlight=False)
         if (i + 1) % 20 == 0:
             console.print(f" [dim]{i+1}/{total}[/dim]")
 
     console.print()
+    console.print(
+        "[dim]Running actual RAGAS evaluation (this evaluates via LLM and may take a moment)...[/dim]"
+    )
 
-    # Simulated Ragas metrics calculation
-    # Real Ragas evaluation takes significant time/tokens for 100 samples
-    import random
+    # Convert results into a HuggingFace Dataset, required by Ragas
+    ds = Dataset.from_list(results)
 
-    if cutoff >= 4:
-        avg_precision = random.uniform(0.85, 0.92)
-        avg_faithfulness = random.uniform(0.88, 0.95)
-    else:
-        # Aggressive cutoff usually drops precision but might maintain faithfulness
-        avg_precision = random.uniform(0.60, 0.75)
-        avg_faithfulness = random.uniform(0.80, 0.90)
+    # Initialize evaluator LLM and Embeddings using LangChain wrappers
+    eval_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
+    eval_embeddings = FixedGoogleEmbeddings(model="models/gemini-embedding-2")
 
-    return {"context_precision": avg_precision, "faithfulness": avg_faithfulness}
+    # Run the actual Ragas evaluation
+    score = evaluate(
+        dataset=ds,
+        metrics=[ContextPrecision(), Faithfulness()],
+        llm=eval_llm,
+        embeddings=eval_embeddings,
+        show_progress=False,
+    )
+
+    # The score object is an EvaluationResult. We can convert to pandas to extract scalar means
+    df = score.to_pandas()
+    return {
+        "context_precision": df["context_precision"].mean() if "context_precision" in df else 0.0,
+        "faithfulness": df["faithfulness"].mean() if "faithfulness" in df else 0.0,
+    }
 
 
 async def main():
-    """Main entry point for the regression test.
+    """Main entry point for the real RAG application regression test."""
 
-    Loads the dataset, runs both baseline (cutoff=5) and experiment (cutoff=2)
-    evaluations, calculates deltas, and prints a summary table with a final verdict.
-    """
-    # Load dataset
+    # Load the 100-sample dataset
     with open("dataset.json", "r") as f:
         dataset = json.load(f)
 
     # Opening header
     console.print(
         Panel.fit(
-            "[bold yellow]RAGAS Regression Test: Reranker Cutoff Analysis[/bold yellow]\n"
-            "[dim]Evaluating the impact of reranker depth on Context Precision and Faithfulness.[/dim]\n"
+            "[bold yellow]RAGAS Regression Test: Real Application[/bold yellow]\n"
+            "[dim]Evaluating actual ChromaDB retrieval and Gemini 2.5 Flash generation using genuine RAGAS metrics.[/dim]\n"
             "[dim]Baseline: Top-5 | Experiment: Top-2[/dim]",
             border_style="yellow",
         )
     )
     console.print()
 
-    rag = MockRAG(dataset)
+    # Initialize the real RAG pipeline (this builds the Vector DB)
+    rag = RealRAG(dataset)
 
     console.print(Rule("[bold]Baseline Run (Cutoff=5)[/bold]", style="white"))
     baseline_metrics = await run_evaluation(rag, dataset, 5)

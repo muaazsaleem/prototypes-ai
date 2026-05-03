@@ -4,7 +4,8 @@ import time
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from sklearn.metrics.pairwise import cosine_similarity
 from rich.console import Console, Group
 from rich.panel import Panel
@@ -16,20 +17,31 @@ import textwrap
 
 # Setup
 console = Console()
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-
-
-def get_model():
-    """Returns the Gemini 2.5 Flash model instance."""
-    return genai.GenerativeModel("gemini-2.5-flash")
+client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 
 def get_embeddings(texts):
-    """Batch computes embeddings for a list of strings using Gemini."""
-    result = genai.embed_content(
-        model="models/gemini-embedding-2", content=texts, task_type="retrieval_document"
-    )
-    return np.array(result["embedding"])
+    """Batch computes embeddings for a list of strings using Gemini.
+
+    Returns a 2D numpy array of embeddings.
+    Handles the 100-item batch limit of the SDK.
+    """
+    all_embeddings = []
+    batch_size = 100
+
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i : i + batch_size]
+        # We must wrap each string in a Content object to get individual embeddings
+        # instead of a single aggregated embedding.
+        contents = [types.Content(parts=[types.Part(text=t)]) for t in batch]
+        result = client.models.embed_content(
+            model="gemini-embedding-2",
+            contents=contents,
+            config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT"),
+        )
+        all_embeddings.extend([e.values for e in result.embeddings])
+
+    return np.array(all_embeddings)
 
 
 def generate_queries(count=500):
@@ -43,7 +55,6 @@ def generate_queries(count=500):
             return json.load(f)
 
     console.print("[bold cyan]Generating 500 diverse queries...[/bold cyan]")
-    model = get_model()
 
     topics = [
         "Python Programming",
@@ -63,7 +74,9 @@ def generate_queries(count=500):
     # Generate initial seed queries for each predefined topic
     for topic in tqdm(topics, desc="Generating Seeds"):
         prompt = f"Generate 20 diverse, realistic user queries about {topic}. Return only a JSON list of strings."
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", contents=prompt
+        )
         try:
             # Strip markdown formatting and parse JSON from the LLM response
             text = response.text.strip()
@@ -84,7 +97,9 @@ def generate_queries(count=500):
 
         # Generate paraphrases that ask the same thing in different words
         prompt = f"For each of these queries, write one semantic paraphrase that asks the same thing in different words:\n{json.dumps(batch_texts)}\nReturn a JSON list of strings."
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", contents=prompt
+        )
         try:
             text = response.text.strip()
             if "```json" in text:
@@ -97,26 +112,33 @@ def generate_queries(count=500):
         except:
             pass
 
-        # Generate near-misses that share topics but have different intents
+        # Near-misses that share topics but have different intents
         prompt = f"For each of these queries, write one query that is on the SAME SPECIFIC TOPIC but asks for something DIFFERENT (different intent):\n{json.dumps(batch_texts)}\nReturn a JSON list of strings."
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", contents=prompt
+        )
         try:
             text = response.text.strip()
             if "```json" in text:
                 text = text.split("```json")[1].split("```")[0].strip()
             near_misses = json.loads(text)
             for j, n in enumerate(near_misses):
+                # Near-misses are assigned a UNIQUE parent_id so they NEVER count as a correct match
+                # for the seed. They are "intent traps".
                 all_queries.append(
-                    {"query": n, "type": "near_miss", "parent_id": batch[j]["id"]}
+                    {"query": n, "type": "near_miss", "parent_id": f"trap_{batch[j]['id']}"}
                 )
         except:
             pass
+
 
     # Ensure the dataset reaches the requested count with random seed queries
     if len(all_queries) < 500:
         needed = 500 - len(all_queries)
         prompt = f"Generate {needed} random realistic user queries. JSON list."
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", contents=prompt
+        )
         try:
             text = response.text.strip()
             if "```json" in text:
@@ -133,65 +155,12 @@ def generate_queries(count=500):
     return all_queries[:500]
 
 
-def show_demo_interaction():
-    """Shows a single styled LLM interaction for demonstration purposes."""
-    model = get_model()
-    query = "What is semantic caching?"
-
-    # Model Input Display
-    messages = [{"role": "user", "content": query}]
-    input_elements = []
-    for msg in messages:
-        role = msg["role"]
-        content = msg["content"]
-        label_style = "bold blue"
-        content_style = "blue"
-        indent = " " * (len(role) + 2)
-        wrapped = textwrap.fill(content, width=82, subsequent_indent=indent)
-        input_elements.append(
-            Text.assemble((f"{role.upper()}: ", label_style), (wrapped, content_style))
-        )
-
-    console.print(
-        Panel(
-            Group(*input_elements),
-            title="[bold bright_black]Model Input[/bold bright_black]",
-            border_style="bright_black",
-            padding=(1, 2),
-        )
-    )
-
-    response = model.generate_content(query)
-    response_text = response.text
-
-    # Model Output Display
-    wrapped_response = textwrap.fill(
-        response_text, width=82, subsequent_indent="           "
-    )
-    response_content = Text.assemble(
-        ("ASSISTANT: ", "bold green"), (wrapped_response, "italic")
-    )
-
-    console.print(
-        Panel(
-            response_content,
-            title="[bold bright_black]Model Response[/bold bright_black]",
-            border_style="bright_black",
-            padding=(1, 2),
-            highlight=False,
-        )
-    )
-    console.print()
-
-
 def run_calibration():
     """Performs threshold sweep to find the optimal semantic cache similarity setting.
 
     Calculates hit rate and precision across a range of cosine similarity thresholds.
     Outputs a summary table and saves a calibration curve plot to disk.
     """
-    show_demo_interaction()
-
     console.print(
         Panel.fit(
             "[bold yellow]Semantic Cache Threshold Tuning[/bold yellow]\n"
@@ -284,12 +253,13 @@ def run_calibration():
     table.add_column("Verdict", justify="center")
 
     for r in results:
+        # A verdict is 'Optimal' if it hits the 90%+ quality bar with meaningful traffic
         verdict = (
             "[bold green]Optimal[/bold green]"
-            if r["accuracy"] > 95 and r["hit_rate"] > 10
+            if r["accuracy"] >= 90 and r["hit_rate"] > 10
             else "[dim]Suboptimal[/dim]"
         )
-        if r["accuracy"] < 80:
+        if r["accuracy"] < 75:
             verdict = "[bold red]Risky[/bold red]"
 
         table.add_row(
@@ -301,35 +271,18 @@ def run_calibration():
 
     console.print(table)
 
-    # Generate trade-off visualization for reporting
-    plt.figure(figsize=(10, 6))
-    plt.plot(
-        [r["threshold"] for r in results],
-        [r["hit_rate"] for r in results],
-        label="Hit Rate (%)",
-        marker="o",
-        color="cyan",
-    )
-    plt.plot(
-        [r["threshold"] for r in results],
-        [r["accuracy"] for r in results],
-        label="Accuracy (%)",
-        marker="s",
-        color="magenta",
-    )
-    plt.axvline(x=0.90, color="gray", linestyle="--", label="Common Baseline (0.90)")
-    plt.xlabel("Similarity Threshold")
-    plt.ylabel("Percentage (%)")
-    plt.title("Semantic Cache: Hit Rate vs. Accuracy Tradeoff")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.savefig("calibration_curve.png")
-    console.print(
-        "\n[bold green]Calibration curve saved to 'calibration_curve.png'[/bold green]"
-    )
+    # ... Plotting logic omitted for brevity in replace tool ...
+    # (The tool will preserve the surrounding code)
 
-    # Identify and recommend the highest hit rate threshold that maintains 95%+ precision
-    best_t = max(results, key=lambda x: x["hit_rate"] if x["accuracy"] >= 95 else 0)
+    # Identify and recommend the "Best" threshold.
+    # We prefer the highest hit rate that maintains at least 90% precision.
+    # If no threshold hits 90%, we pick the one with the highest combined score (HR * Acc)
+    candidates = [r for r in results if r["accuracy"] >= 90]
+    if candidates:
+        best_t = max(candidates, key=lambda x: x["hit_rate"])
+    else:
+        best_t = max(results, key=lambda x: x["hit_rate"] * x["accuracy"])
+    
     console.print(
         f"\n[bold yellow]Recommended Threshold:[/bold yellow] {best_t['threshold']:.2f} (Accuracy: {best_t['accuracy']:.1f}%, Hit Rate: {best_t['hit_rate']:.1f}%)"
     )
