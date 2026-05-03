@@ -1,0 +1,7 @@
+ragas
+google-generativeai
+datasets
+pandas
+rich
+black
+python-dotenv

@@ -1,0 +1,17 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment variables
+.env
+.env.*
+
+# Generated data and artifacts
+queries.json
+calibration_curve.png
+*.png
+
+# OS generated files
+.DS_Store
+Thumbs.db

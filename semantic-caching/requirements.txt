@@ -1,0 +1,8 @@
+google-generativeai
+numpy
+matplotlib
+scikit-learn
+rich
+black
+tqdm
+pandas

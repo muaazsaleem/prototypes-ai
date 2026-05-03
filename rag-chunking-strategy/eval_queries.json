@@ -1,0 +1,152 @@
+[
+  {
+    "question": "What is the series and number of the withdrawn NIST publication discussed in the document?",
+    "answer": "The withdrawn publication is NIST Special Publication (SP) 800-50.",
+    "context": "Withdrawn Publication Series/Number Special Publication (SP) 800-50"
+  },
+  {
+    "question": "What is the full title of the withdrawn NIST Special Publication 800-50?",
+    "answer": "The full title is 'Building an Information Technology Security Awareness and Training Program'.",
+    "context": "Title Building an Information Technology Security Awareness and Training Program"
+  },
+  {
+    "question": "When was NIST Special Publication 800-50 originally published?",
+    "answer": "It was originally published in October 2003.",
+    "context": "Publication Date(s) October 2003"
+  },
+  {
+    "question": "By what publication has NIST Special Publication 800-50 been superseded?",
+    "answer": "It has been superseded by SP 800-50 revision 1.",
+    "context": "The attached publication has been superseded by the following publication(s): Series/Number SP 800-50 revision 1"
+  },
+  {
+    "question": "Who are some of the authors listed for the superseding publication, SP 800-50 revision 1?",
+    "answer": "Marian Merritt, Susan Hansche, Dr. Brenda Ellis, Kevin Sanchez-Cherry, Julie Nethery Snyder, and Donald Walden are listed as authors.",
+    "context": "Author(s) Marian Merritt; Susan Hansche; Dr. Brenda Ellis; Kevin Sanchez-Cherry; Julie Nethery Snyder; Donald Walden"
+  },
+  {
+    "question": "What is the primary purpose of the NIST Special Publication 800-50 document?",
+    "answer": "The document provides guidelines for building and maintaining a comprehensive awareness and training program as part of an organization's IT security program.",
+    "context": "This document provides guidelines for building and maintaining a comprehensive awareness and training program, as part of an organization\u2019s IT security program."
+  },
+  {
+    "question": "Which U.S. federal act forms the statutory authority for NIST's development of this document?",
+    "answer": "The Federal Information Security Management Act (FISMA) of 2002, Public Law 107-347, provides the statutory authority.",
+    "context": "This document has been developed by the National Institute of Standards and Technology (NIST) in furtherance of its statutory responsibilities under the Federal Information Security Management Act (FISMA) of 2002, Public Law 107-347."
+  },
+  {
+    "question": "To which types of systems do NIST's security standards and guidelines, like SP 800-50, generally not apply?",
+    "answer": "They generally do not apply to national security systems.",
+    "context": "NIST is responsible for developing standards and guidelines... but such standards and guidelines shall not apply to national security systems."
+  },
+  {
+    "question": "Name two key audiences identified in the document for whom this guidance is intended.",
+    "answer": "The guidance is intended for the CIO, the IT security program manager and staff, managers (including system and application owners) and their contractors, and agency training coordinators.",
+    "context": "This guidance is intended to be useful to several key audiences in an organization, including, but not limited to: the CIO, the IT security program manager1 and staff, managers (including system and application owners) and their contractors, and agency training coordinators."
+  },
+  {
+    "question": "What are the four critical steps in the life cycle of an IT security awareness and training program identified in the Executive Summary?",
+    "answer": "The four critical steps are Awareness and Training Program Design, Awareness and Training Material Development, Program Implementation, and Post-Implementation.",
+    "context": "The document identifies the four critical steps in the life cycle of an IT security awareness and training program: \u0192 Awareness and Training Program Design (Section 3): \u0192 Awareness and Training Material Development (Section 4): \u0192 Program Implementation (Section 5): \u0192 Post-Implementation (Section 6):"
+  },
+  {
+    "question": "What is the distinction between 'awareness' and 'training' as defined by their material goals in the document?",
+    "answer": "Awareness material aims to focus attention on good security practices with short, simple messages for all users, while training material is more in-depth, directed at specific audiences to learn skills needed to do their jobs.",
+    "context": "the message that the awareness effort sends should be short and simple. ... The awareness audience must include all users in an organization. ... The message in training material should include everything related to security that attendees need to know in order to do their jobs. Training material is usually far more in-depth than material used in an awareness session or campaign."
+  },
+  {
+    "question": "Name the three common models for managing a security training function discussed in the document.",
+    "answer": "The three common models are Centralized, Partially Decentralized, and Fully Decentralized program management.",
+    "context": "The document also discusses three common models used in managing a security training function. \u0192 Centralized: \u0192 Partially Decentralized: \u0192 Fully Decentralized:"
+  },
+  {
+    "question": "According to the document, what role do Agency Heads play in an IT security awareness and training program?",
+    "answer": "Agency heads must ensure high priority is given to effective security awareness and training, designate a CIO, assign IT security responsibility, ensure an effective and well-supported IT security program, and ensure enough sufficiently trained personnel.",
+    "context": "Agency heads must ensure that high priority is given to effective security awareness and training for the workforce. This includes implementation of a viable IT security program with a strong awareness and training component. Agency heads should: \u0192 Designate a CIO; \u0192 Assign responsibility for IT security; \u0192 Ensure that an agency wide IT security program is implemented, is well-supported by resources and budget, and is effective; and \u0192 Ensure that the agency has enough sufficiently trained personnel to protect its IT resources."
+  },
+  {
+    "question": "What specific responsibility does the Federal Information Security Management Act (FISMA) of 2002 assign to the Chief Information Officer (CIO) regarding training?",
+    "answer": "FISMA tasks CIOs with administering training and overseeing personnel with significant responsibilities for information security.",
+    "context": "Chief Information Officers (CIOs) are tasked by the FISMA to administer training and oversee personnel with significant responsibilities for information security."
+  },
+  {
+    "question": "What is one key tactical-level responsibility of the IT security program manager for the awareness and training program?",
+    "answer": "Key tactical responsibilities include ensuring material is appropriate and timely, effectively deployed, that users can provide feedback, and that material is periodically reviewed and updated.",
+    "context": "The IT security program manager has tactical-level responsibility for the awareness and training program. In this role, the program manager should: \u0192 Ensure that awareness and training material developed is appropriate and timely for the intended audiences; \u0192 Ensure that awareness and training material is effectively deployed to reach the intended audience; \u0192 Ensure that users and managers have an effective way to provide feedback on the awareness and training material and its presentation; \u0192 Ensure that awareness and training material is reviewed periodically and updated when necessary; and \u0192 Assist in establishing a tracking and reporting strategy."
+  },
+  {
+    "question": "What is the main question to answer when beginning to develop material for an organization-wide awareness program?",
+    "answer": "The question is, 'What do we want all agency personnel to be aware of regarding IT security?'",
+    "context": "The question to be answered when beginning to develop material for an organization wide awareness program or campaign is, \u201cWhat do we want all agency personnel to be aware of regarding IT security?\u201d"
+  },
+  {
+    "question": "List three examples of awareness topics mentioned in the document that can be included in an awareness session or campaign.",
+    "answer": "Examples include password usage and management, protection from malicious code (viruses, worms), policy implications of noncompliance, and social engineering.",
+    "context": "Topics may include: \u0192 Password usage and management \u2013 including creation, frequency of changes, and protection \u0192 Protection from viruses, worms, Trojan horses, and other malicious code \u2013 scanning, updating definitions \u0192 Policy \u2013 implications of noncompliance ... \u0192 Social engineering"
+  },
+  {
+    "question": "What is a recommended model from NIST for building IT security training courses?",
+    "answer": "NIST Special Publication 800-16, 'Information Technology Security Training Requirements: A Role- and Performance-Based Model,' is the recommended model.",
+    "context": "A Model for Building Training Courses: NIST Special Pub. 800-16 The methodology in NIST Special Publication 800-16 provides a useful tool with which to develop IT security training courses."
+  },
+  {
+    "question": "Name two sources of timely material for security awareness programs.",
+    "answer": "Sources include e-mail advisories from industry-hosted news groups, professional organizations and vendors, online IT security daily news websites, periodicals, and conferences.",
+    "context": "Sources of timely material may include: \u0192 E-mail advisories issued by industry-hosted news groups, academic institutions, or the organization\u2019s IT security office; \u0192 Professional organizations and vendors; \u0192 Online IT security daily news websites; \u0192 Periodicals; and \u0192 Conferences, seminars, and courses."
+  },
+  {
+    "question": "According to NIST SP 800-16, what are the six functional specialties (role categories) used to organize training course material?",
+    "answer": "The six functional specialties are Manage, Acquire, Design and Develop, Operate, Review and Evaluate, and Use.",
+    "context": "The six role categories or functional specialties are: \u0192 Manage \u2013 \u0192 Acquire \u2013 \u0192 Design and Develop \u2013 \u0192 Operate \u2013 \u0192 Review and Evaluate \u2013 \u0192 Use \u2013"
+  },
+  {
+    "question": "What is one key question an agency should consider when deciding whether to develop training material in-house or outsource it?",
+    "answer": "Key questions include whether the agency has the in-house resources, if it's more cost-effective, if there's a funding mechanism, and if content sensitivity precludes using a contractor.",
+    "context": "\u0192 Do we have the in-house resources to do the job? ... \u0192 Is it more cost-effective to develop the material in-house versus outsourcing? \u0192 Is there a funding mechanism in place (budget)? ... \u0192 Does the course content sensitivity preclude use of a contractor?"
+  },
+  {
+    "question": "Before an IT security awareness and training program can be implemented, what four prerequisite steps must have been completed?",
+    "answer": "A needs assessment must have been conducted, a strategy developed, a program plan for implementing that strategy completed, and awareness and training material developed.",
+    "context": "An IT security awareness and training program should be implemented only after: \u0192 A needs assessment has been conducted; \u0192 A strategy has been developed; \u0192 An awareness and training program plan for implementing that strategy has been completed; and \u0192 Awareness and training material has been developed."
+  },
+  {
+    "question": "Name two techniques mentioned for delivering awareness material that are suitable for disseminating a single message.",
+    "answer": "Techniques for a single message include messages on awareness tools (e.g., pens), posters, screensavers, warning banners, desk-to-desk alerts, agency-wide e-mail messages, and awards programs.",
+    "context": "Some techniques that lend themselves to dissemination of a single message are the use of awareness tools, posters, access lists, screensavers and warning banners, desk-to-desk alerts, agency wide e-mail messages, in-person instructor-led sessions, brown bag seminars, and rewards programs."
+  },
+  {
+    "question": "What is a significant advantage of onsite, instructor-led training for delivering training material?",
+    "answer": "The biggest advantage is the interactive nature of the instruction.",
+    "context": "Onsite, instructor-led training (including peer presentations and mentoring) \u2013 ... The biggest advantage of the technique is the interactive nature of the instruction."
+  },
+  {
+    "question": "List two disadvantages of onsite, instructor-led training for delivering training material, particularly in large or widely distributed organizations.",
+    "answer": "Disadvantages include difficulty in scheduling sufficient classes for all target audiences in a large organization, and significant travel costs for instructors and students in a widely distributed workforce.",
+    "context": "In a large organization, there may be difficulty in scheduling sufficient classes so that all of the target audience can attend. In an organization that has a widely distributed workforce, there may be significant travel costs for instructors and students."
+  },
+  {
+    "question": "What is the overarching theme for security awareness and training initiatives in the post-implementation phase?",
+    "answer": "The overarching theme should always be 'Continuous improvement'.",
+    "context": "Continuous improvement should always be the theme for security awareness and training initiatives, as this is one area where \u201cyou can never do enough.\u201d"
+  },
+  {
+    "question": "Why is it important to ensure that an organization's IT security awareness and training program is kept current?",
+    "answer": "The program can quickly become obsolete if sufficient attention is not paid to technology advancements, IT infrastructure and organizational changes, and shifts in organizational mission and priorities.",
+    "context": "An organization\u2019s IT security awareness and training program can quickly become obsolete if sufficient attention is not paid to technology advancements, IT infrastructure and organizational changes, and shifts in organizational mission and priorities."
+  },
+  {
+    "question": "According to Appendix B, what is the purpose of the metric 'The percentage of employees with significant security responsibilities who have received specialized training'?",
+    "answer": "The purpose is to gauge the level of expertise among designated security roles and security responsibilities for specific systems within the agency.",
+    "context": "Metric The percentage of employees with significant security responsibilities who have received specialized training Purpose To gauge the level of expertise among designated security roles and security responsibilities for specific systems within the agency"
+  },
+  {
+    "question": "How often should the awareness and training program metric from Appendix B be measured, at a minimum?",
+    "answer": "It should be measured annually, at a minimum.",
+    "context": "Frequency Annually, at a minimum"
+  },
+  {
+    "question": "What does the document state as 'one of the weakest links' in attempts to secure systems and networks?",
+    "answer": "The 'people factor' (people themselves) is identified as one of the weakest links in IT security.",
+    "context": "As cited in audit reports, periodicals, and conference presentations, it is generally understood by the IT security professional community that people are one of the weakest links in attempts to secure systems and networks. The \u201cpeople factor\u201d - not technology - is key to providing an adequate and appropriate level of security."
+  }
+]

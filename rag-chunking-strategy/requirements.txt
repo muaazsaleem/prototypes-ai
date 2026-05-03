@@ -1,0 +1,10 @@
+google-genai
+langchain
+langchain-google-genai
+langchain-community
+langchain-experimental
+chromadb
+rich
+black
+pypdf
+pydantic

@@ -1,0 +1,1049 @@
+[
+    {
+        "question": "What are the primary benefits and considerations for using Amazon EC2 Spot Instances, especially for fault-tolerant or stateless workloads?",
+        "ground_truth": "Amazon EC2 Spot Instances allow users to bid on unused EC2 capacity, offering significant cost savings (up to 90% off On-Demand prices). They are ideal for fault-tolerant, flexible, and stateless workloads like batch processing, big data analytics, containerized applications, or CI/CD pipelines, where interruptions can be handled. However, Spot Instances can be interrupted by EC2 with a two-minute warning when EC2 needs the capacity back, requiring applications to be designed for graceful termination and resiliency.",
+        "contexts": [
+            "EC2 Spot Instances enable you to request unused EC2 instances at a significant discount compared to On-Demand prices. You can save up to 90% on compute costs by leveraging these instances.",
+            "Spot Instances are highly suitable for workloads that are fault-tolerant, flexible, and stateless, such as batch jobs, big data processing, containerized microservices, high-performance computing (HPC), and development/testing environments.",
+            "The primary consideration for Spot Instances is their interruptible nature. EC2 can reclaim capacity with a two-minute notification, requiring applications to be designed to handle interruptions gracefully, often by saving state or restarting work.",
+            "Common use cases include distributed workloads, CI/CD pipelines, web servers that can scale out, and image rendering where individual tasks can be restarted without loss."
+        ]
+    },
+    {
+        "question": "A client has an S3 bucket storing archival data that is accessed rarely, perhaps once a quarter, but needs to be retrieved within minutes when requested. What S3 storage classes would you recommend and why?",
+        "ground_truth": "For archival data accessed rarely but requiring retrieval within minutes, Amazon S3 Glacier Instant Retrieval and S3 Standard-IA (Infrequent Access) are good candidates. S3 Glacier Instant Retrieval is optimized for archives that need millisecond retrieval, offering lower storage costs than S3 Standard-IA but with a per-GB retrieval fee. S3 Standard-IA is suitable for data accessed less frequently but still requiring rapid access, balancing cost and performance. S3 Glacier Flexible Retrieval (formerly S3 Glacier) or S3 Glacier Deep Archive would be too slow for 'minutes' retrieval, as their standard retrieval times are typically hours.",
+        "contexts": [
+            "Amazon S3 Standard-IA is designed for data that is accessed less frequently, but requires rapid access when needed. It offers a lower storage price than S3 Standard and a per-GB retrieval fee.",
+            "S3 Glacier Instant Retrieval is an archival storage class that delivers the lowest-cost storage for data that is rarely accessed and requires retrieval in milliseconds. It provides an excellent balance of cost and performance for long-term archives that need immediate access.",
+            "S3 Glacier Flexible Retrieval and S3 Glacier Deep Archive are optimal for archival data that is accessed infrequently and where retrieval times of several hours are acceptable. These are generally not suitable for 'minutes' retrieval requirements.",
+            "When choosing between S3 Standard-IA and S3 Glacier Instant Retrieval, consider the access pattern and retrieval cost. Glacier Instant Retrieval typically offers lower storage costs, making it more economical for truly infrequent access with immediate retrieval."
+        ]
+    },
+    {
+        "question": "Explain the key differences between AWS Security Groups and Network Access Control Lists (NACLs) in a VPC, and when you would typically use each for network security.",
+        "ground_truth": "AWS Security Groups (SGs) act as stateful firewalls at the instance level, allowing or denying traffic to associated EC2 instances. They only permit 'allow' rules and automatically allow return traffic for any established connection. NACLs, on the other hand, are stateless firewalls at the subnet level, processing rules in order and supporting both 'allow' and 'deny' rules. You typically use SGs for granular instance-level security, controlling access to specific applications or services, while NACLs are used for broader subnet-level security, acting as a second layer of defense or for denying specific IP ranges before traffic reaches instances.",
+        "contexts": [
+            "Security Groups operate at the instance level. They are stateful, meaning if you allow inbound traffic, outbound return traffic is automatically allowed. They only support 'allow' rules.",
+            "Network Access Control Lists (NACLs) operate at the subnet level. They are stateless, meaning inbound and outbound rules must be explicitly defined. NACLs process rules in order, from lowest to highest, and support both 'allow' and 'deny' rules.",
+            "You primarily use Security Groups to control traffic to and from EC2 instances, ensuring only authorized traffic can reach your applications. They provide a fundamental layer of security for your compute resources.",
+            "NACLs serve as a second, optional layer of defense for your VPC. They are often used to block specific malicious IP addresses or ranges at the subnet boundary before traffic even reaches the Security Groups.",
+            "A key difference is their scope: Security Groups apply to instances, while NACLs apply to subnets. A single instance can be associated with multiple Security Groups, but a subnet can only have one NACL."
+        ]
+    },
+    {
+        "question": "An application deployed on an EC2 instance needs to read objects from a specific S3 bucket and write logs to CloudWatch Logs. How should IAM permissions be structured to adhere to the principle of least privilege?",
+        "ground_truth": "To adhere to the principle of least privilege, an IAM Role should be created and associated with the EC2 instance. This role should have an IAM Policy granting only the necessary permissions: `s3:GetObject` on the specific S3 bucket (and possibly `s3:ListBucket` if listing is required) and `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents` for the specific CloudWatch log group and stream. Crucially, avoid using `s3:*` or `logs:*` unless absolutely necessary, and specify resource ARNs (Amazon Resource Names) to limit the scope of permissions.",
+        "contexts": [
+            "The principle of least privilege dictates that users and services should only be granted the minimum permissions necessary to perform their tasks.",
+            "For applications running on EC2 instances, IAM Roles are the recommended method for granting permissions. Instead of storing credentials on the instance, the instance assumes a role with specific permissions.",
+            "To read from an S3 bucket, an IAM policy should include the `s3:GetObject` action. If the application also needs to list contents, `s3:ListBucket` would be required. Always specify the target S3 bucket's ARN for resource-level permissions.",
+            "For writing logs to CloudWatch Logs, the required actions are typically `logs:CreateLogGroup`, `logs:CreateLogStream`, and `logs:PutLogEvents`. These actions should be scoped to the specific CloudWatch log group or region.",
+            "Avoid granting broad permissions like `s3:*` or `logs:*` unless strictly necessary. Instead, use specific actions and resource ARNs to limit the scope of access."
+        ]
+    },
+    {
+        "question": "Describe what a 'cold start' means for an AWS Lambda function and outline strategies to minimize its impact on application performance.",
+        "ground_truth": "A 'cold start' in AWS Lambda occurs when a function is invoked after a period of inactivity, requiring Lambda to provision a new execution environment, download the function code, and initialize the runtime. This process adds latency to the first invocation. Strategies to mitigate cold starts include using Provisioned Concurrency, which pre-initializes a specified number of execution environments, keeping them ready. Other methods involve increasing memory allocation (as more memory can often mean more vCPUs and faster initialization), optimizing function code and dependencies to reduce package size, and using lightweight runtimes like Node.js or Python. Regularly invoking the function (a 'warming' strategy) can also help keep environments active, though Provisioned Concurrency is the recommended AWS solution.",
+        "contexts": [
+            "A Lambda cold start occurs when the Lambda service needs to prepare a new execution environment for your function. This involves downloading code, starting the runtime, and initializing your function, adding latency to the first invocation.",
+            "Provisioned Concurrency is an AWS Lambda feature that keeps functions initialized and hyper-ready to respond in milliseconds. You configure a specific number of environments to be pre-warmed.",
+            "Increasing the memory allocation for a Lambda function can sometimes reduce cold start times. AWS allocates CPU power proportionally to the memory configured, leading to faster function initialization and execution.",
+            "Minimizing your Lambda deployment package size by removing unnecessary libraries or files can reduce the time it takes for the service to download your code to the execution environment.",
+            "Regularly invoking your function (often called 'warming' or 'pinging') can help keep execution environments alive, reducing the chance of a cold start. However, Provisioned Concurrency is the more robust and recommended solution by AWS for predictable latency."
+        ]
+    },
+    {
+        "question": "What are the primary use cases for Amazon RDS Multi-AZ deployments versus using Read Replicas? Can they be used together?",
+        "ground_truth": "Amazon RDS Multi-AZ deployments are primarily for high availability and disaster recovery. They synchronously replicate data to a standby instance in a different Availability Zone, ensuring automatic failover with minimal downtime in case of an outage. Read Replicas, conversely, are designed for scaling read-heavy database workloads. They asynchronously replicate data from a primary DB instance, allowing applications to direct read queries to them, thereby offloading the primary instance. Yes, they can be used together: a Multi-AZ primary instance can have Read Replicas, which can themselves be Multi-AZ for even greater read resilience.",
+        "contexts": [
+            "Amazon RDS Multi-AZ deployments provide enhanced availability and durability for database instances. A standby replica is provisioned in a different Availability Zone and data is synchronously replicated, enabling automatic failover.",
+            "The primary purpose of Multi-AZ is disaster recovery. If the primary database instance fails, RDS automatically switches to the standby replica, minimizing downtime without manual intervention.",
+            "Read Replicas in Amazon RDS are designed to improve the performance of read-heavy database workloads. They allow you to create one or more copies of your primary database instance, and direct read traffic to these replicas.",
+            "Read Replicas use asynchronous replication. While this means they can lag slightly behind the primary, it also allows the primary instance to continue processing transactions without waiting for replica acknowledgments, optimizing for read scaling.",
+            "It is possible and common to use Multi-AZ deployments and Read Replicas together. For example, a Multi-AZ primary instance can have Read Replicas for scaling reads, and those Read Replicas can also be configured as Multi-AZ for their own high availability."
+        ]
+    },
+    {
+        "question": "How can I set up an Amazon CloudWatch alarm to notify me if an EC2 instance's CPU utilization exceeds 80% for 5 consecutive minutes, and what are the common notification options?",
+        "ground_truth": "To set up a CloudWatch alarm for EC2 CPU utilization, you would create an alarm based on the `CPUUtilization` metric from the `AWS/EC2` namespace. Configure the threshold to 80%, the period to 1 minute, and the data points to alarm to 5 (meaning 5 consecutive periods of exceeding 80%). Common notification options include sending notifications to an Amazon SNS topic, which can then deliver messages to email addresses, SMS, or trigger other AWS services (like Lambda functions for auto-remediation). You can also integrate with AWS Auto Scaling policies or create an EC2 action (e.g., stop, terminate, recover) directly from the alarm.",
+        "contexts": [
+            "Amazon CloudWatch monitors your AWS resources and the applications you run on AWS in real time. You can use CloudWatch to collect and track metrics, create custom dashboards, and set alarms.",
+            "To monitor EC2 CPU utilization, you'll use the `CPUUtilization` metric within the `AWS/EC2` namespace. This metric is available by default for all EC2 instances.",
+            "When creating a CloudWatch alarm, you define a threshold (e.g., 80%), a period (e.g., 1 minute), and a number of data points within the period that must be in the 'ALARM' state (e.g., 5 consecutive minutes) before the alarm triggers.",
+            "Common actions for CloudWatch alarms include publishing notifications to an Amazon Simple Notification Service (SNS) topic. SNS can then distribute these notifications to various endpoints such as email, SMS, or even other HTTP/S endpoints and Lambda functions.",
+            "CloudWatch alarms can also be configured to perform EC2 actions like 'Stop', 'Terminate', or 'Recover' an instance, or trigger Auto Scaling policies to adjust capacity based on the metric thresholds."
+        ]
+    },
+    {
+        "question": "What are some best practices for safely updating an existing AWS CloudFormation stack without causing downtime or unintended resource changes?",
+        "ground_truth": "For safely updating CloudFormation stacks, key best practices include using Change Sets to preview proposed changes before execution, enabling Rollback on failure, and carefully managing update policies for critical resources. For resources that support it, using 'UpdateReplacePolicy' and 'DeletionPolicy' can prevent accidental data loss. Implement granular IAM permissions for CloudFormation execution to prevent unauthorized modifications. For complex updates, consider a blue/green deployment strategy by launching an entirely new stack alongside the old one and switching traffic, or using nested stacks to manage changes more modularly.",
+        "contexts": [
+            "CloudFormation Change Sets allow you to preview the changes AWS CloudFormation will make to your stack before you implement them. This helps you understand the impact of your changes, especially for critical resources.",
+            "CloudFormation automatically rolls back stack operations if any resource creation or update fails, returning the stack to its last stable state. Ensure this feature is enabled to prevent a partially updated or broken stack.",
+            "For critical resources like databases or S3 buckets, define `UpdateReplacePolicy` and `DeletionPolicy` attributes in your template to control how these resources are handled during updates and deletions, protecting against data loss.",
+            "Consider using a blue/green deployment strategy for major updates to production stacks. This involves deploying a new 'green' stack alongside the existing 'blue' stack, routing traffic, and then decommissioning the old stack, minimizing downtime.",
+            "Leverage nested stacks to modularize your CloudFormation templates. This can make updates more manageable by allowing changes to be applied to smaller, independent units of infrastructure.",
+            "Implement strict IAM policies for users or roles interacting with CloudFormation, ensuring they only have permissions to update specific stacks or resources according to their responsibilities."
+        ]
+    },
+    {
+        "question": "Outline the typical stages of a basic CI/CD pipeline using AWS CodePipeline and CodeBuild for a web application, from code commit to deployment.",
+        "ground_truth": "A typical AWS CI/CD pipeline for a web application using CodePipeline and CodeBuild involves several stages. The 'Source' stage usually integrates with a repository like AWS CodeCommit, GitHub, or Bitbucket, triggering the pipeline on code commits. The 'Build' stage uses AWS CodeBuild to compile code, run unit tests, and package artifacts (e.g., a Docker image or a zip file), defined by a `buildspec.yml`. An optional 'Test' stage can run integration tests. Finally, the 'Deploy' stage uses services like AWS CodeDeploy (for EC2/on-premises or ECS), AWS Elastic Beanstalk, or AWS Fargate to deploy the packaged application to its target environment.",
+        "contexts": [
+            "AWS CodePipeline is a fully managed continuous delivery service that helps you automate your release pipelines for fast and reliable application and infrastructure updates.",
+            "The 'Source' stage in CodePipeline integrates with source code repositories like AWS CodeCommit, GitHub, or Bitbucket. Any code changes committed to the specified branch automatically trigger the pipeline.",
+            "AWS CodeBuild is a fully managed continuous integration service that compiles source code, runs tests, and produces software packages that are ready to deploy. It uses a `buildspec.yml` file to define build commands and artifacts.",
+            "After the build stage, an optional 'Test' stage can be added to run integration tests, security scans, or other quality checks before deployment.",
+            "The 'Deploy' stage typically uses AWS CodeDeploy to automate application deployments to various compute services, including Amazon EC2, AWS Fargate, AWS Lambda, and on-premises servers, or integrates with services like Elastic Beanstalk."
+        ]
+    },
+    {
+        "question": "An EC2 instance launched in a private subnet is not reachable from the internet, even though a public facing load balancer is in front of it. What are the common troubleshooting steps you would take?",
+        "ground_truth": "If an EC2 instance in a private subnet isn't reachable via a public load balancer, troubleshooting should start by verifying the load balancer's configuration: ensure it's public-facing, its security group allows inbound traffic on the listener port, and it has healthy targets. Then, check the target group's health checks and the EC2 instance's security group to ensure it allows inbound traffic from the load balancer's security group on the application port. Next, inspect the NACLs of the subnet where the EC2 instance resides, confirming they allow inbound and outbound traffic on the application and ephemeral ports. Finally, check the instance's operating system firewall and ensure the application itself is running and listening on the correct port.",
+        "contexts": [
+            "When an EC2 instance is unreachable, first verify the health of any load balancer in front of it. Ensure the load balancer is public-facing, its listener is correctly configured, and its security group permits inbound traffic on the listener ports.",
+            "Check the target group associated with the load balancer. Confirm the instance is registered, healthy, and the health check port and protocol are correct. The target group's health checks use the security group of the instance.",
+            "Examine the Security Group attached to the EC2 instance. It must allow inbound traffic on the application port (e.g., 80, 443, 8080) from the Security Group of the load balancer, not necessarily from `0.0.0.0/0`.",
+            "Review the Network Access Control List (NACL) for the subnet where the EC2 instance resides. NACLs are stateless, so explicit rules must allow both inbound traffic on the application port and outbound ephemeral port responses (typically 1024-65535).",
+            "Confirm that the application running on the EC2 instance is actually listening on the expected port. Also, check the operating system's internal firewall (e.g., `iptables` on Linux, Windows Firewall) to ensure it's not blocking traffic."
+        ]
+    },
+    {
+        "question": "What are the different types of scaling policies available for an EC2 Auto Scaling group?",
+        "ground_truth": "EC2 Auto Scaling supports target tracking scaling, step scaling, simple scaling, and scheduled scaling policies. Target tracking automatically adjusts capacity to maintain a specified metric utilization, while step and simple scaling react to alarms by adding/removing a specified number of instances. Scheduled scaling allows you to set specific times for scaling events.",
+        "contexts": [
+            "Amazon EC2 Auto Scaling allows you to use different types of scaling policies to adjust the capacity of your Auto Scaling groups: target tracking scaling, step scaling, and simple scaling.",
+            "Target tracking scaling helps you ensure that your Auto Scaling group maintains a specified average metric value, such as CPU utilization or network I/O, by automatically adjusting the group's desired capacity.",
+            "Step scaling and simple scaling policies allow you to choose a metric and an alarm threshold. When the alarm is breached, the policy increases or decreases the group's capacity by a specified number of instances or a percentage.",
+            "Scheduled scaling enables you to configure your Auto Scaling group to scale in or out automatically at specific dates and times, which is useful for predictable load changes."
+        ]
+    },
+    {
+        "question": "Explain the primary difference between an IAM User and an IAM Role in AWS and when to use each.",
+        "ground_truth": "An IAM User is a persistent identity for a person or service with long-term credentials, typically used for direct login and programmatic access. An IAM Role, on the other hand, is an AWS identity with temporary permissions that you can assume. Roles are ideal for granting cross-account access, temporary access for applications running on EC2, or providing federated users access without creating an IAM user for each.",
+        "contexts": [
+            "An IAM user is an entity you create in AWS to represent the person or service that interacts with AWS. Users have long-term credentials like passwords for console access and access keys for programmatic access.",
+            "IAM roles are identities that you can assume to gain temporary permissions to perform specific actions in AWS. Roles do not have standard long-term credentials associated with them; instead, they provide temporary security credentials when assumed.",
+            "Use IAM users for individual administrators, developers, or applications that require persistent access to your AWS environment.",
+            "IAM roles are best suited for scenarios like granting cross-account access to external users, allowing applications running on EC2 instances to access other AWS services, or enabling federated users to access AWS resources without managing individual IAM users."
+        ]
+    },
+    {
+        "question": "How can I automatically transition Amazon S3 objects to lower-cost storage classes and eventually expire them after a certain period?",
+        "ground_truth": "You can use S3 Lifecycle policies to automatically transition objects to different storage classes (like S3 Standard-IA, S3 Glacier Instant Retrieval, or S3 Glacier Deep Archive) based on their age, and then automatically expire them. A lifecycle rule specifies actions for objects with a certain prefix or tag, defining transition actions to move objects after 'N' days and expiration actions to permanently delete them after 'M' days.",
+        "contexts": [
+            "Amazon S3 Lifecycle management allows you to define rules to automatically transition objects to different storage classes or expire objects after a specified period.",
+            "A lifecycle rule consists of one or more actions, such as transition actions to move objects to lower-cost storage classes like S3 Standard-IA, S3 Glacier Instant Retrieval, S3 Glacier Flexible Retrieval, or S3 Glacier Deep Archive.",
+            "Expiration actions in an S3 Lifecycle rule specify that objects should be permanently deleted after a certain number of days or at a specific date.",
+            "You can apply lifecycle rules to all objects in a bucket or to a subset of objects by specifying an object prefix or object tags, ensuring only relevant objects are affected."
+        ]
+    },
+    {
+        "question": "An EC2 instance I launched is not reachable via SSH. What are the common AWS-related configurations I should check?",
+        "ground_truth": "If an EC2 instance is unreachable via SSH, you should check the Security Group associated with the instance to ensure inbound SSH (port 22) is allowed from your IP address. Also verify the Network ACLs (NACLs) of the subnet allow inbound SSH on port 22 and outbound ephemeral ports. Confirm the instance has a public IP and the route table for its subnet correctly routes internet traffic via an Internet Gateway. Finally, ensure the correct key pair was used during launch and the instance's CPU utilization isn't critically high.",
+        "contexts": [
+            "Verify that the security group associated with your EC2 instance allows inbound traffic on port 22 (SSH) from your IP address or 0.0.0.0/0 if testing from anywhere.",
+            "Check the Network ACLs (NACLs) for the subnet where your instance resides. NACLs must allow both inbound SSH (port 22) and outbound traffic on ephemeral ports (1024-65535) for the SSH connection to establish.",
+            "Ensure your EC2 instance has a public IP address or is within a private subnet with a NAT Gateway/instance if you're trying to connect from outside the VPC. Also, confirm the subnet's route table points internet-bound traffic (0.0.0.0/0) to an Internet Gateway.",
+            "Confirm you are using the correct private key (.pem file) that corresponds to the key pair specified when the instance was launched. If the key is incorrect or corrupted, SSH will fail.",
+            "Monitor the instance's CPU utilization and status checks in CloudWatch. High CPU utilization or failed status checks can prevent SSH access."
+        ]
+    },
+    {
+        "question": "What are the default concurrency limits for AWS Lambda functions and how can I manage them for critical functions?",
+        "ground_truth": "By default, all Lambda functions within a region share a total concurrency limit of 1,000 invocations at any given time. For critical functions, you can reserve a specific amount of concurrency, ensuring that function always has capacity available, even during spikes in other functions. Reserved concurrency guarantees that your function can always scale up to that specific limit and prevents other functions from consuming that capacity, though it also means your function cannot exceed its reserved limit.",
+        "contexts": [
+            "By default, AWS Lambda provides a total concurrency limit of 1,000 concurrent executions across all functions in a given region for your account.",
+            "This regional concurrency limit is a soft limit, meaning it can be increased by submitting a service limit increase request to AWS Support.",
+            "To manage concurrency for individual critical functions, you can configure 'Reserved concurrency'. This setting guarantees a specific maximum number of concurrent executions for a function.",
+            "When you reserve concurrency for a function, that capacity is dedicated to that function and cannot be used by other functions in your account, even if your function is not actively using it. This also means your function cannot exceed its reserved concurrency limit."
+        ]
+    },
+    {
+        "question": "What are the main benefits of using AWS CloudFormation for deploying and managing cloud infrastructure?",
+        "ground_truth": "AWS CloudFormation allows you to define your AWS infrastructure as code in declarative templates (JSON or YAML). Key benefits include automated and consistent resource provisioning, making deployments repeatable and reducing manual errors. It supports version control of your infrastructure, enabling easy rollback to previous states. CloudFormation also manages resource dependencies, simplifies cleanup, and helps standardize infrastructure across environments.",
+        "contexts": [
+            "AWS CloudFormation allows you to model your entire AWS infrastructure (compute, network, database, application resources) in a declarative template file using JSON or YAML.",
+            "One of the primary benefits is automated and consistent provisioning. CloudFormation ensures that resources are deployed in the same way every time, reducing manual errors and increasing reliability.",
+            "Infrastructure as Code (IaC) with CloudFormation enables version control of your infrastructure templates, making it easy to track changes, collaborate, and roll back to previous stable configurations if needed.",
+            "CloudFormation automatically handles the provisioning order and dependencies between resources, simplifying complex deployments. It also makes it easy to delete entire stacks and all their contained resources in a single operation, aiding in cleanup.",
+            "Using CloudFormation helps standardize infrastructure across different environments (development, staging, production), ensuring consistency and reducing configuration drift."
+        ]
+    },
+    {
+        "question": "How can I set up an alarm in CloudWatch to notify me when an EC2 instance's CPU utilization exceeds a certain threshold?",
+        "ground_truth": "To set up a CloudWatch alarm for EC2 CPU utilization, you navigate to the CloudWatch console, select \"Alarms\", and create a new alarm. You then choose the \"EC2\" service and the \"CPUUtilization\" metric for your specific instance. Configure the threshold (e.g., > 80%), the period (e.g., 5 minutes), and the number of consecutive periods for the alarm state. Finally, specify an SNS topic for notifications to alert you when the alarm state is breached.",
+        "contexts": [
+            "Amazon CloudWatch allows you to monitor your AWS resources and the applications you run on AWS. You can use CloudWatch to collect and track metrics, create custom dashboards, and set alarms.",
+            "To create an alarm, go to the CloudWatch console, select 'Alarms' from the navigation pane, and click 'Create alarm'. You'll then specify the metric, such as 'CPUUtilization' for an EC2 instance.",
+            "When creating an alarm, you need to define the metric (e.g., CPUUtilization), the instance ID, the period over which the metric is evaluated (e.g., 5 minutes), and the statistical function (e.g., Average).",
+            "Set the threshold value (e.g., 80%) and the comparison operator (e.g., 'Greater than'). You also define how many consecutive periods the threshold must be breached for the alarm to change state.",
+            "For notification, configure an Amazon SNS topic as an action for the alarm. When the alarm state changes (e.g., from OK to ALARM), a message is published to the SNS topic, which can then send emails, SMS, or trigger other actions."
+        ]
+    },
+    {
+        "question": "How do AWS CodePipeline and CodeBuild work together to automate a CI/CD workflow?",
+        "ground_truth": "AWS CodePipeline orchestrates the entire continuous delivery process, defining stages like source, build, test, and deploy. AWS CodeBuild is specifically used within the build stage of a CodePipeline. CodePipeline takes source code from a repository (e.g., CodeCommit, S3, GitHub) as input, passes it to CodeBuild. CodeBuild compiles the source code, runs tests, and produces artifacts (like Docker images, deployable ZIP files) based on instructions in a `buildspec.yml` file. These artifacts are then passed back to CodePipeline for subsequent stages like deployment.",
+        "contexts": [
+            "AWS CodePipeline is a continuous delivery service that automates your release pipelines for fast and reliable application and infrastructure updates. It orchestrates the various stages, including source, build, test, and deploy.",
+            "AWS CodeBuild is a fully managed continuous integration service that compiles source code, runs tests, and produces software packages that are ready to deploy.",
+            "Within a CodePipeline, CodeBuild typically acts as the 'Build' stage. CodePipeline integrates directly with CodeBuild to execute the build process after source code changes are detected.",
+            "CodeBuild takes source code from a CodePipeline's input artifact, executes build commands specified in a `buildspec.yml` file (which can be part of the source code), and generates output artifacts (e.g., compiled code, Docker images, test reports).",
+            "Once CodeBuild completes its task, the generated artifacts are stored in an S3 bucket and then handed off by CodePipeline to the next stage, such as a deployment stage using CodeDeploy or CloudFormation."
+        ]
+    },
+    {
+        "question": "What is the purpose of an Amazon RDS Multi-AZ deployment and what benefits does it provide?",
+        "ground_truth": "An Amazon RDS Multi-AZ deployment synchronously replicates your database to a standby instance in a different Availability Zone within the same AWS Region. Its primary purpose is high availability and automatic failover in case of an Availability Zone outage, instance failure, or database engine issue. This architecture minimizes downtime for planned maintenance, such as patching, and provides data durability, though it's not a scaling solution for read performance.",
+        "contexts": [
+            "Amazon RDS Multi-AZ deployments provision and maintain a synchronous standby replica of your database in a different Availability Zone within the same AWS Region.",
+            "The primary purpose of a Multi-AZ deployment is to provide high availability and failover support for RDS database instances. In the event of a primary instance failure, AZ outage, or database engine problem, RDS automatically switches to the standby replica.",
+            "This failover mechanism is designed to be fully automatic and typically completes within minutes, minimizing application downtime without manual intervention.",
+            "Multi-AZ deployments also benefit from reduced downtime during planned database maintenance, such as operating system patching or database version upgrades, as the standby instance is updated first, then a failover occurs.",
+            "While Multi-AZ provides enhanced durability and availability, it is not intended for read scaling. For read scaling, you should use Amazon RDS Read Replicas."
+        ]
+    },
+    {
+        "question": "What are some strategies to optimize storage costs for infrequently accessed data stored in Amazon S3?",
+        "ground_truth": "To optimize S3 costs for infrequently accessed data, you should primarily use S3 Lifecycle policies to automatically transition objects to lower-cost storage classes. Options include S3 Standard-IA (Infrequent Access) for data accessed less frequently but requiring rapid retrieval, S3 One Zone-IA for non-critical, reconstructible data, or S3 Glacier Instant Retrieval, S3 Glacier Flexible Retrieval, or S3 Glacier Deep Archive for archival data with varying retrieval times and costs. Intelligent-Tiering can also automate this by monitoring access patterns.",
+        "contexts": [
+            "For infrequently accessed data that still requires rapid access, Amazon S3 Standard-IA (Infrequent Access) provides lower storage price per GB compared to S3 Standard, with a per-GB retrieval fee.",
+            "If your data is infrequently accessed, non-critical, and can be easily re-generated, S3 One Zone-IA offers even lower storage costs by storing data in a single Availability Zone.",
+            "For archival data that you access rarely, consider using S3 Glacier Instant Retrieval for immediate retrieval, S3 Glacier Flexible Retrieval for flexible retrieval options, or S3 Glacier Deep Archive for the lowest cost storage with retrieval times ranging from minutes to hours.",
+            "Leverage S3 Lifecycle policies to automatically transition objects between storage classes based on their age or last access time. This eliminates manual intervention and ensures cost-efficiency as data ages.",
+            "Amazon S3 Intelligent-Tiering is another option that automatically moves data to the most cost-effective access tier (frequent, infrequent, archive access) when access patterns change, without performance impact or operational overhead."
+        ]
+    },
+    {
+        "question": "How do I ensure my EC2 instances automatically scale based on demand?",
+        "ground_truth": "To ensure your EC2 instances automatically scale based on demand, you should use an Auto Scaling Group (ASG). An ASG maintains a specified number of instances and can automatically adjust this count up or down using scaling policies. These policies, such as target tracking, simple, or step scaling, respond to metrics like CPU utilization or network I/O, ensuring optimal performance and cost efficiency.",
+        "contexts": [
+            "An Auto Scaling group (ASG) is a collection of EC2 instances that are treated as a logical grouping for the purposes of automatic scaling and management. An ASG helps you maintain application availability and allows you to automatically increase or decrease the number of EC2 instances in your group according to conditions you define.",
+            "To configure an ASG, you specify a launch template or launch configuration, which defines the instance type, AMI, security groups, and other properties for the instances launched by the ASG.",
+            "Auto Scaling groups support various scaling policies to adjust capacity. Target tracking scaling policies allow you to choose a target value for a specific metric (e.g., average CPU utilization), and the ASG adjusts capacity to maintain that target. Simple and step scaling policies adjust capacity in response to metric breaches.",
+            "Common metrics used for scaling include average CPU utilization, network in/out, or custom metrics published to CloudWatch. These metrics help the ASG determine when to scale out (add instances) or scale in (remove instances)."
+        ]
+    },
+    {
+        "question": "What is the benefit of S3 versioning and how do I enable it for my bucket?",
+        "ground_truth": "S3 object versioning provides protection against accidental deletions or overwrites by keeping multiple versions of an object within the same bucket. When an object is modified or deleted, a new version or a delete marker is created, allowing you to easily retrieve previous states. You enable versioning at the bucket level through the S3 console, API, or CLI.",
+        "contexts": [
+            "Amazon S3 Versioning allows you to keep multiple versions of an object in the same bucket. You can use S3 Versioning to preserve, retrieve, and restore every version of every object stored in your Amazon S3 bucket.",
+            "Versioning helps you recover from unintended user actions and application failures. For example, if you accidentally delete an object, you can retrieve its previous version. If an application incorrectly overwrites an object, you can restore a prior correct state.",
+            "When versioning is enabled for a bucket, if an object is overwritten, Amazon S3 generates a new version of the object rather than replacing the original. If an object is deleted, Amazon S3 inserts a delete marker instead of permanently removing the object, allowing retrieval of previous versions.",
+            "You enable versioning on an S3 bucket. Once enabled, it cannot be disabled, only suspended. You can enable versioning through the Amazon S3 console by editing the bucket properties, using the AWS CLI, or through the S3 API."
+        ]
+    },
+    {
+        "question": "When should I use an IAM role instead of an IAM user for an EC2 instance needing to access S3?",
+        "ground_truth": "You should use an IAM role for an EC2 instance that needs to access S3. IAM roles provide temporary credentials that instances can assume, eliminating the need to embed long-term AWS credentials directly into your application code or store them on the instance. IAM users, on the other hand, are for human users or applications requiring long-term programmatic access from outside AWS, and their credentials must be managed explicitly.",
+        "contexts": [
+            "An IAM role is an AWS identity with permission policies that determine what the identity can and cannot do in AWS. IAM roles are intended to be assumable by entities that AWS trusts, such as EC2 instances, other AWS services, or even users from another AWS account.",
+            "The primary benefit of using IAM roles for EC2 instances is that you don't need to manage access keys for your instances. When an EC2 instance is launched with an IAM role, it automatically receives temporary, frequently rotated credentials that it can use to make API calls to other AWS services.",
+            "IAM users are meant for human users who sign in to the AWS Management Console or for applications that require long-term programmatic access to AWS services. Each IAM user has a unique set of credentials (username/password for console, access key ID/secret access key for programmatic access) that must be securely managed.",
+            "AWS best practices strongly recommend against storing AWS credentials directly on an EC2 instance or embedding them in application code. Using IAM roles assigned to EC2 instances ensures that credentials are never stored directly on the instance, improving security and reducing operational overhead."
+        ]
+    },
+    {
+        "question": "How can I achieve high availability for my Amazon RDS database?",
+        "ground_truth": "To achieve high availability for your Amazon RDS database, you should deploy it in a Multi-AZ configuration. This creates a synchronous standby replica of your primary database instance in a different Availability Zone (AZ). In the event of an infrastructure failure (e.g., instance failure, AZ outage), RDS automatically fails over to the standby replica, minimizing downtime without requiring manual intervention.",
+        "contexts": [
+            "Amazon RDS Multi-AZ deployments provide enhanced availability and durability for database instances, making them a natural fit for production database workloads. When you provision a Multi-AZ DB instance, Amazon RDS automatically creates a primary DB instance and synchronously replicates the data to a standby instance in a different Availability Zone (AZ).",
+            "In a Multi-AZ deployment, Amazon RDS automatically detects and recovers from common failure scenarios for your primary DB instance, such as loss of an Availability Zone, primary DB instance failure, or network connectivity issues to the primary.",
+            "During a failover, Amazon RDS automatically switches to the standby replica. The DNS endpoint for your DB instance remains the same, so your application can resume database operations without manual changes. This process typically completes within one to two minutes.",
+            "The data replication between the primary and standby instances is synchronous. This means that all data writes to the primary are committed to both the primary and standby instances before the transaction is acknowledged, ensuring data consistency across AZs and zero data loss during failover."
+        ]
+    },
+    {
+        "question": "What is CloudFormation and how does it help manage infrastructure?",
+        "ground_truth": "AWS CloudFormation is an Infrastructure as Code (IaC) service that allows you to define and provision AWS infrastructure resources in a declarative way using text files (templates) in YAML or JSON format. It helps manage infrastructure by automating the provisioning, updating, and deletion of resource collections (stacks) in a consistent, repeatable, and version-controlled manner, reducing manual errors and increasing operational efficiency.",
+        "contexts": [
+            "AWS CloudFormation allows you to model your entire AWS infrastructure (like EC2 instances, RDS databases, VPCs, and more) using a simple text file. This approach is known as Infrastructure as Code (IaC), enabling you to treat infrastructure like application code.",
+            "You define your resources in a CloudFormation template using YAML or JSON. This template describes the desired state of your AWS resources, including their configurations and dependencies.",
+            "When you create a CloudFormation stack, CloudFormation provisions the resources specified in your template. It manages the lifecycle of these resources as a single unit, ensuring that they are created, updated, and deleted in the correct order.",
+            "CloudFormation helps ensure consistency and repeatability in your deployments. By using templates, you can launch identical environments across different regions or accounts, reduce manual errors, and integrate infrastructure changes into your version control system."
+        ]
+    },
+    {
+        "question": "My Lambda functions sometimes experience slow initial responses. What could be causing this?",
+        "ground_truth": "Slow initial responses for your Lambda functions are typically due to 'cold starts'. A cold start occurs when Lambda needs to provision a new execution environment for your function, which involves downloading your code, initializing the runtime, and executing any initialization code outside the handler. This overhead is more pronounced for functions with larger deployment packages or complex initialization logic. Provisioned Concurrency is a feature designed to mitigate cold starts by pre-initializing execution environments.",
+        "contexts": [
+            "A 'cold start' in AWS Lambda refers to the latency incurred when Lambda needs to initialize a new execution environment for a function. This happens when a function hasn't been invoked recently, or when the service needs to scale up to handle increased demand.",
+            "During a cold start, Lambda performs several steps: downloading the function code, setting up the runtime environment, and executing any global or static initialization code in your function outside the main handler. The duration of this process can vary based on the function's memory, language runtime, and package size.",
+            "Functions with larger deployment packages or complex initialization logic (e.g., loading large libraries, establishing database connections outside the handler) are more susceptible to noticeable cold start times. This can impact the perceived performance, especially for latency-sensitive applications.",
+            "AWS Lambda offers Provisioned Concurrency to mitigate cold starts. With Provisioned Concurrency, you can configure a specified number of execution environments to be pre-initialized and ready to respond instantly to your function's invocations, significantly reducing cold start latency."
+        ]
+    },
+    {
+        "question": "How can I connect two different VPCs in the same AWS region securely?",
+        "ground_truth": "You can connect two different VPCs in the same AWS region securely using VPC peering. VPC peering creates a direct network connection between two VPCs, allowing resources in each VPC to communicate with each other using private IP addresses as if they were within the same network. This connection is non-transitive, meaning if VPC A peers with VPC B, and VPC B peers with VPC C, VPC A cannot directly communicate with VPC C through the peering connection.",
+        "contexts": [
+            "A VPC peering connection is a networking connection between two VPCs that enables you to route traffic between them privately. Instances in either VPC can communicate with each other as if they are within the same network.",
+            "VPC peering connections can be established between your own VPCs, or with a VPC in another AWS account, as long as they are in the same AWS region. It uses the existing AWS infrastructure to establish the connection, meaning there is no single point of failure and no bandwidth bottleneck.",
+            "Traffic between peered VPCs stays within the AWS network and does not traverse the public internet, which enhances security. You can apply security groups and network ACLs to control the traffic flow between resources in peered VPCs.",
+            "Important to note is that VPC peering connections are non-transitive. This means that if you have a peering connection between VPC A and VPC B, and another between VPC B and VPC C, VPC A cannot directly communicate with VPC C via the peering connections. You would need a separate peering connection between VPC A and VPC C if direct communication is required."
+        ]
+    },
+    {
+        "question": "What's the main difference between running containers on ECS using Fargate versus the EC2 launch type?",
+        "ground_truth": "The main difference lies in who manages the underlying compute infrastructure. With the Fargate launch type, AWS fully manages the EC2 instances that run your containers, providing a serverless experience where you only pay for the container's CPU and memory resources. In contrast, the EC2 launch type requires you to provision, manage, and scale your own EC2 instances (cluster capacity) within your ECS cluster, offering more control over the infrastructure but also more operational overhead.",
+        "contexts": [
+            "AWS Fargate is a serverless compute engine for containers that works with both Amazon Elastic Container Service (ECS) and Amazon Elastic Kubernetes Service (EKS). With Fargate, you don't need to provision, configure, or scale clusters of virtual machines (EC2 instances) to run containers.",
+            "When using Fargate, you simply define your application requirements (CPU and memory) and AWS handles all the underlying infrastructure management. You pay only for the compute resources consumed by your containers, from the time you start downloading your container image until the Amazon ECS Task or Amazon EKS Pod terminates.",
+            "The EC2 launch type for ECS allows you to run your containerized applications on a cluster of Amazon EC2 instances that you manage. You have full control over the EC2 instances, including their instance type, operating system, and patching.",
+            "Choosing between Fargate and EC2 launch types involves a trade-off: Fargate offers less operational overhead and a serverless experience, while the EC2 launch type provides more control over the underlying infrastructure, which can be beneficial for specific compliance needs, custom AMI usage, or cost optimization for long-running, highly utilized workloads."
+        ]
+    },
+    {
+        "question": "How can I ensure my AWS resources comply with security best practices and internal policies?",
+        "ground_truth": "You can ensure your AWS resources comply with security best practices and internal policies using AWS Config. AWS Config continuously monitors and records your AWS resource configurations and provides a detailed inventory. You can then define 'Config Rules' (predefined or custom) that automatically evaluate the compliance of your resources against specified conditions. For non-compliant resources, Config can notify you or even trigger automated remediation actions.",
+        "contexts": [
+            "AWS Config provides a detailed view of the configuration of AWS resources in your AWS account. It records configuration changes over time, helping you audit, assess, and evaluate the configurations of your AWS resources.",
+            "AWS Config Rules allow you to define rules to assess whether your AWS resources comply with desired configurations. These rules are continuously evaluated against the configuration changes recorded by AWS Config.",
+            "You can use both AWS managed rules (predefined rules by AWS for common best practices, e.g., S3 buckets not publicly accessible) and custom rules (defined using AWS Lambda functions for specific internal policies or unique requirements).",
+            "When a resource violates a Config Rule, AWS Config marks it as non-compliant and can send notifications via Amazon SNS. For some rules, AWS Config can also initiate automated remediation actions to bring non-compliant resources back into compliance."
+        ]
+    },
+    {
+        "question": "My EC2 instance is running, but I can't connect to it via SSH. What should I check first?",
+        "ground_truth": "If your EC2 instance is running but you can't connect via SSH, the first thing to check is the Security Group configuration. Ensure that the Security Group associated with your EC2 instance has an inbound rule allowing SSH (port 22) traffic from your current IP address or a CIDR block that includes it (e.g., 0.0.0.0/0 for anywhere, but less secure). Other potential checks include Network ACLs, route tables, and verifying the instance's state and network reachability.",
+        "contexts": [
+            "Security Groups act as a virtual firewall for your EC2 instance to control inbound and outbound traffic. For SSH connectivity, you must have an inbound rule that allows traffic on port 22 (SSH's default port).",
+            "When troubleshooting SSH connectivity, verify that the Security Group attached to your EC2 instance allows inbound TCP traffic on port 22 from your specific public IP address or the network range you are connecting from. If the source is set to '0.0.0.0/0', it allows SSH from anywhere, which is generally not recommended for production environments.",
+            "Beyond Security Groups, also check your Network Access Control Lists (Network ACLs). Network ACLs act as a stateless firewall at the subnet level and must explicitly allow both inbound and outbound traffic for SSH (port 22 inbound, ephemeral ports 1024-65535 outbound for return traffic).",
+            "Confirm that the EC2 instance is in a 'running' state and has a public IP address or is accessible via a bastion host/VPN if in a private subnet. Additionally, ensure your route tables correctly route traffic to and from the internet gateway or NAT gateway as appropriate for your network configuration."
+        ]
+    },
+    {
+        "question": "How can I configure my EC2 Auto Scaling group to automatically scale based on CPU utilization?",
+        "ground_truth": "You can configure an EC2 Auto Scaling group to scale based on CPU utilization by creating a target tracking scaling policy. This policy lets you specify a target CPU utilization (e.g., 70%), and the Auto Scaling group will automatically adjust the number of instances to maintain that target. You can also use step scaling policies to add or remove a specific number of instances when a CloudWatch alarm threshold is breached.",
+        "contexts": [
+            "Target tracking scaling policies allow you to choose a metric and a target value for that metric. Amazon EC2 Auto Scaling creates and manages the CloudWatch alarms that trigger the scaling policy. For example, you can maintain CPU utilization at 70%.",
+            "Step scaling policies allow you to define a set of scaling adjustments based on the size of the alarm breach. You specify CloudWatch alarms that trigger the policy, and when the alarm is in breach, the policy adds or removes instances based on predefined steps.",
+            "To scale based on CPU utilization, you would typically use the `CPUUtilization` metric provided by Amazon CloudWatch. Both target tracking and step scaling policies can use this metric."
+        ]
+    },
+    {
+        "question": "My application is getting 'Access Denied' errors when trying to put objects into an S3 bucket, even though the IAM role attached to the EC2 instance has `s3:PutObject` permissions. What could be wrong?",
+        "ground_truth": "'Access Denied' errors in S3, despite correct IAM role permissions, can often be due to a conflicting S3 bucket policy that explicitly denies access, or an S3 Block Public Access setting. Network configurations like VPC endpoints or security groups might also prevent access, or the object might have an ACL that overrides bucket policy. Cross-account access configurations can also be a source if the bucket is owned by a different account.",
+        "contexts": [
+            "Even if an IAM role grants permissions, an S3 bucket policy can explicitly deny access, which takes precedence. Check the bucket policy for any `Deny` statements that might conflict with your IAM permissions.",
+            "The Amazon S3 Block Public Access settings, configured at either the account or bucket level, can override other permissions and prevent object uploads, especially if they are deemed public.",
+            "Ensure network connectivity. If your EC2 instance is in a private subnet, verify that a VPC endpoint for S3 is configured correctly and that associated security groups allow outbound traffic to S3.",
+            "Cross-account access might be misconfigured. If the bucket is in a different AWS account than the EC2 instance's IAM role, both the IAM policy and the bucket policy must grant permissions."
+        ]
+    },
+    {
+        "question": "I need to restore my RDS PostgreSQL database to a specific time, say 2 hours ago, because of a data corruption event. How do I perform a point-in-time recovery?",
+        "ground_truth": "To perform a point-in-time recovery (PITR) for an RDS PostgreSQL database, you must have automatic backups enabled. You can restore to any point within your backup retention period, down to a 5-minute increment. This is done by creating a new DB instance from the recovery point. You cannot restore to an existing DB instance.",
+        "contexts": [
+            "Amazon RDS provides point-in-time recovery for your DB instances. This feature allows you to restore a DB instance to any specific point in time within its backup retention period, typically down to a 5-minute window.",
+            "To enable point-in-time recovery, you must have automatic backups turned on for your RDS DB instance. This ensures continuous backups of transaction logs are taken in addition to daily snapshots.",
+            "When you perform a point-in-time recovery, Amazon RDS creates a *new* DB instance. You cannot restore to an existing DB instance directly. The new instance will have the data as it was at the specified recovery time.",
+            "The maximum retention period for automatic backups, which dictates how far back you can perform a point-in-time recovery, can be configured for up to 35 days."
+        ]
+    },
+    {
+        "question": "My AWS Lambda function is failing with an \"AccessDeniedException\" when trying to write logs to CloudWatch Logs. What should I check?",
+        "ground_truth": "An \"AccessDeniedException\" for CloudWatch Logs from a Lambda function usually indicates that the execution role assigned to the Lambda function lacks the necessary permissions to create log groups or put log events. You need to ensure the IAM role has policies like `logs:CreateLogGroup`, `logs:CreateLogStream`, and `logs:PutLogEvents`, typically provided by the `AWSLambdaBasicExecutionRole` managed policy.",
+        "contexts": [
+            "Every AWS Lambda function requires an execution role. This IAM role grants the function permissions to access AWS services and resources, such as writing logs to CloudWatch Logs.",
+            "If a Lambda function encounters an `AccessDeniedException` when interacting with CloudWatch Logs, the primary cause is often missing permissions in its execution role. The role must explicitly allow actions like `logs:CreateLogGroup`, `logs:CreateLogStream`, and `logs:PutLogEvents`.",
+            "The AWS managed policy `AWSLambdaBasicExecutionRole` is commonly used for Lambda functions and includes the necessary permissions for writing logs to CloudWatch. Attaching this policy to your function's execution role will typically resolve the issue.",
+            "Verify the trust policy of the IAM execution role to ensure it allows `lambda.amazonaws.com` to assume the role. If the service cannot assume the role, it cannot use its permissions."
+        ]
+    },
+    {
+        "question": "I suspect some resources in my CloudFormation stack have been manually changed outside of CloudFormation. How can I detect these changes?",
+        "ground_truth": "You can detect manual changes to resources in your CloudFormation stack by using CloudFormation drift detection. This feature compares the actual configuration of your stack's resources with their expected configuration defined in the CloudFormation template, identifying any discrepancies.",
+        "contexts": [
+            "CloudFormation drift detection allows you to identify when the actual configuration of a stack's resources differs from their expected configuration as defined in the stack's CloudFormation template.",
+            "To detect drift, you can use the `DetectStackDrift` API operation or the equivalent command in the AWS CLI/console. CloudFormation then reports which resources have drifted, their expected properties, and their actual properties.",
+            "Drift detection helps maintain the desired state of your infrastructure by highlighting manual changes that could lead to configuration inconsistencies or operational issues.",
+            "It's important to regularly run drift detection, especially in environments where manual changes might occur, to ensure your infrastructure aligns with your CloudFormation templates."
+        ]
+    },
+    {
+        "question": "How can I grant an IAM role to a Kubernetes service account within my EKS cluster for fine-grained permissions to AWS services?",
+        "ground_truth": "To grant an IAM role to a Kubernetes service account in an EKS cluster, you use IAM Roles for Service Accounts (IRSA). This involves annotating the Kubernetes service account with the Amazon Resource Name (ARN) of an IAM role. EKS then uses OpenID Connect (OIDC) federation to allow pods using that service account to assume the IAM role, providing temporary credentials for AWS API calls.",
+        "contexts": [
+            "IAM Roles for Service Accounts (IRSA) enables you to associate an IAM role with a Kubernetes service account. This allows any pod that uses that service account to assume the associated IAM role and obtain temporary AWS credentials.",
+            "To configure IRSA, your EKS cluster must have an OIDC identity provider. This provider facilitates the trust relationship between your Kubernetes service accounts and AWS IAM.",
+            "You annotate your Kubernetes service account with `eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/MyEksServiceAccountRole`. When a pod is launched using this service account, it will automatically present the appropriate OIDC token to assume this role.",
+            "This approach provides more granular control over AWS permissions for applications running in Kubernetes pods compared to node-level IAM roles, improving security by adhering to the principle of least privilege."
+        ]
+    },
+    {
+        "question": "What is the main difference between AWS security groups and network ACLs (NACLs) in a VPC, and when should I use each?",
+        "ground_truth": "Security groups are stateful, operate at the instance level, and allow only `Allow` rules. They evaluate all rules before deciding to allow traffic. Network ACLs (NACLs) are stateless, operate at the subnet level, and support both `Allow` and `Deny` rules with an explicit rule evaluation order. Security groups are generally used for instance-level access control, while NACLs provide an optional, broader layer of network security at the subnet boundary.",
+        "contexts": [
+            "Security groups act as a virtual firewall for your EC2 instances to control inbound and outbound traffic. They are stateful, meaning if you allow an inbound request, the outbound response is automatically allowed.",
+            "Network Access Control Lists (NACLs) are an optional layer of security for your VPC that acts as a firewall for controlling traffic in and out of one or more subnets. NACLs are stateless, meaning separate rules must be created for inbound and outbound traffic.",
+            "Security groups only support `Allow` rules; you cannot explicitly deny traffic. In contrast, NACLs support both `Allow` and `Deny` rules, giving you more granular control at the subnet level.",
+            "NACLs process rules in order, from lowest to highest, and stop processing when a match is found. Security groups evaluate all rules before making a decision. Typically, security groups are sufficient for most instance-level protection, while NACLs provide an additional, coarser-grained layer of defense."
+        ]
+    },
+    {
+        "question": "I have an application running on EC2 that generates custom metrics (e.g., number of active users). How can I send these metrics to CloudWatch and create an alarm based on them?",
+        "ground_truth": "To send custom metrics to CloudWatch, you can use the `PutMetricData` API call via the AWS CLI, SDKs, or the CloudWatch agent. Once the custom metrics are in CloudWatch, you can then create a CloudWatch alarm by selecting your custom namespace and metric, defining a threshold, and specifying actions like sending an SNS notification or triggering an Auto Scaling policy.",
+        "contexts": [
+            "You can publish your own custom metrics to CloudWatch using the `PutMetricData` API operation. Custom metrics can be of any numerical value that your application generates, like requests per second, error rates, or active user counts.",
+            "To send custom metrics, you need to specify a `Namespace` (e.g., `MyApplication/WebMetrics`), `MetricName` (e.g., `ActiveUsers`), and `Value`. You can also include `Dimensions` for further filtering and aggregation.",
+            "After your custom metrics are published to CloudWatch, you can create CloudWatch alarms based on them. Navigate to the CloudWatch console, select 'Alarms', 'Create alarm', and then browse for your custom namespace and metric.",
+            "When configuring the alarm, define the threshold (e.g., `ActiveUsers > 1000`), the evaluation period, and the actions to take when the alarm state changes, such as publishing to an SNS topic or triggering an Auto Scaling action."
+        ]
+    },
+    {
+        "question": "What is the best practice for granting IAM permissions to users and applications, and why is it important?",
+        "ground_truth": "The best practice for granting IAM permissions is to follow the principle of least privilege. This means granting only the minimum permissions required for a user or application to perform its specific tasks, and no more. It's crucial for reducing the security risk associated with over-privileged credentials and limiting the blast radius in case of a compromise.",
+        "contexts": [
+            "The principle of least privilege dictates that you should grant only the permissions required to perform a task. If an entity (user, role, application) only needs to read from S3, it should not be granted write access.",
+            "Implementing least privilege significantly reduces your attack surface. In the event that an IAM credential is compromised, an attacker's ability to access or modify resources is limited by the permissions explicitly granted to that credential.",
+            "Regularly review and refine IAM policies to ensure they align with the current responsibilities of users and applications. Remove any unnecessary or unused permissions.",
+            "AWS IAM policies use an explicit `Deny` that always overrides an explicit `Allow`. However, the default is an implicit `Deny`. Therefore, you must explicitly `Allow` actions."
+        ]
+    },
+    {
+        "question": "How can I incorporate a manual approval step into my AWS CodePipeline to ensure quality gates before deploying to production?",
+        "ground_truth": "To incorporate a manual approval step in AWS CodePipeline, you add an \"Approval\" action type to a stage in your pipeline. This action will pause the pipeline until a designated IAM user or role explicitly approves or rejects the change in the AWS CodePipeline console or via the AWS CLI/SDK. You can configure SNS notifications to alert approvers.",
+        "contexts": [
+            "AWS CodePipeline allows you to insert a manual approval action into any stage of your pipeline. This action pauses the pipeline execution until an authorized user manually approves or rejects the change.",
+            "To add an approval action, edit your pipeline and select the stage where you want the approval to occur (e.g., before production deployment). Choose 'Add action', select 'Approval' as the action type, and configure the approver details.",
+            "You can configure an Amazon SNS topic within the approval action to send notifications to designated approvers when a manual approval is pending, ensuring timely review.",
+            "Approvers must have `codepipeline:PutApprovalResult` permission for the specific pipeline resource to approve or reject the action. This ensures only authorized personnel can control the pipeline flow."
+        ]
+    },
+    {
+        "question": "What are the general purpose Amazon EC2 instance types and what are they best suited for?",
+        "ground_truth": "General purpose EC2 instances include M, T, and A series. T-series (like T3, T4g) are burstable and good for development, test, and small web servers. M-series (like M5, M6g) provide a balance of compute, memory, and networking resources and are suitable for a wide range of applications like web and application servers, small-to-medium databases, and enterprise applications. A-series (like A1) are powered by AWS Graviton Processors and are cost-effective for scale-out workloads.",
+        "contexts": [
+            "Amazon EC2 T instance types are burstable performance instances that provide a baseline level of CPU performance with the ability to burst above the baseline. They are suitable for workloads that don't need consistently high CPU, such as development and test environments, small databases, and low-latency interactive applications.",
+            "M instance types are general-purpose instances that offer a balance of compute, memory, and networking resources. They are a good choice for a wide range of applications, including web and application servers, small and mid-size databases, gaming servers, caching fleets, and enterprise applications.",
+            "The A1 instance family, powered by AWS Graviton Processors, are a cost-effective choice for scale-out applications such as web servers, containerized microservices, and development environments."
+        ]
+    },
+    {
+        "question": "How does S3 object versioning work and what are its benefits?",
+        "ground_truth": "S3 Versioning keeps multiple versions of an object in the same bucket. When an object is uploaded or modified, a new version is created. This protects against accidental deletions and overwrites by allowing you to restore previous versions. Each object version has a unique version ID.",
+        "contexts": [
+            "S3 Versioning allows you to keep multiple versions of an object in the same bucket. You can use S3 Versioning to preserve, retrieve, and restore every version of every object stored in your Amazon S3 bucket.",
+            "When S3 Versioning is enabled for a bucket, if you upload a new object with the same key as an existing object, Amazon S3 does not overwrite the existing object. Instead, it creates a new version of the object and stores both versions.",
+            "The primary benefits of S3 Versioning are enhanced data durability and easier recovery from unintended user actions or application failures. You can easily revert to an earlier version of an object.",
+            "Each object version has a unique version ID, which is a string of characters that Amazon S3 generates at the time the object is uploaded."
+        ]
+    },
+    {
+        "question": "Explain the difference between an IAM user and an IAM role, and when to use each.",
+        "ground_truth": "An IAM user represents a person or application that interacts with AWS using long-term credentials. An IAM role, on the other hand, is an AWS identity with permission policies that do not have long-term credentials and are assumed by an entity (user, service, or application) to gain temporary permissions. Roles are best for granting temporary access or cross-account access, while users are for persistent identities.",
+        "contexts": [
+            "An IAM user is an entity that you create in AWS to represent the person or application that uses it to interact with AWS. IAM users have long-term credentials, such as a password and access keys.",
+            "An IAM role is an IAM identity that you can create in your account that has specific permissions. An IAM role is similar to an IAM user, in that it is an AWS identity with permission policies that determine what the identity can and cannot do in AWS. However, instead of being uniquely associated with one person, a role is intended to be assumable by anyone who needs it.",
+            "Unlike IAM users, roles do not have long-term credentials. When an entity assumes a role, it is provided with temporary security credentials that expire after a specified duration.",
+            "Use IAM users for individuals or applications requiring persistent, long-term access to AWS resources. Use IAM roles for granting temporary, short-term access to AWS resources to other AWS services, users, or applications, especially for cross-account access."
+        ]
+    },
+    {
+        "question": "How can I update an existing AWS CloudFormation stack? What update methods are available?",
+        "ground_truth": "You can update a CloudFormation stack using direct updates or change sets. Direct updates immediately apply changes by modifying the stack's template. Change sets allow you to preview the proposed changes to your stack resources before applying them, which is safer for production environments. You apply a change set once you're satisfied with the proposed changes.",
+        "contexts": [
+            "AWS CloudFormation allows you to update existing stacks. You can update a stack by submitting a modified version of the original template, or by submitting a new template.",
+            "When you update a stack, CloudFormation determines the best way to update the stack without impacting its availability, and only updates the resources that have changed.",
+            "Change sets allow you to preview the changes AWS CloudFormation will make to your stack resources before you implement them. This is particularly useful for understanding the impact of your updates, especially in production environments.",
+            "After you create a change set, you can view the changes and then decide whether to execute it. Executing a change set applies the proposed updates to your stack."
+        ]
+    },
+    {
+        "question": "What is a 'cold start' in AWS Lambda and how can it be mitigated?",
+        "ground_truth": "A cold start in AWS Lambda occurs when a new execution environment needs to be initialized for a function, typically due to inactivity or a sudden surge in requests. This initialization includes downloading the code, starting the runtime, and executing initialization code, which adds latency. Mitigation strategies include increasing memory allocation (as it often correlates with CPU), using Provisioned Concurrency, optimizing code dependencies, or using a warm-up strategy (though Provisioned Concurrency is preferred).",
+        "contexts": [
+            "A 'cold start' in AWS Lambda refers to the additional time it takes for a function to execute when a new execution environment needs to be provisioned. This happens when a function hasn't been invoked for a while or when a surge in invocations requires scaling up new instances.",
+            "During a cold start, Lambda needs to download your function code, initialize the runtime, and run any initialization code outside the main handler. This can introduce latency, especially for functions with large deployment packages or complex initialization logic.",
+            "To mitigate cold starts, you can use AWS Lambda Provisioned Concurrency. This feature keeps functions initialized and hyper-ready to respond in milliseconds, ensuring minimal latency.",
+            "Other mitigation techniques include optimizing your function's memory allocation (which also impacts CPU), reducing the size of your deployment package, and minimizing the number of dependencies, or using a simpler runtime."
+        ]
+    },
+    {
+        "question": "What are the benefits of using a Multi-AZ deployment for Amazon RDS, and how does it work?",
+        "ground_truth": "A Multi-AZ deployment for Amazon RDS enhances availability and durability by synchronously replicating your database to a standby instance in a different Availability Zone. In case of an infrastructure failure, RDS automatically fails over to the standby, minimizing downtime. This setup also allows for easier patching as updates can be applied to the standby first, then a failover occurs.",
+        "contexts": [
+            "Amazon RDS Multi-AZ deployments provide enhanced availability and durability for database instances. When you provision a Multi-AZ DB instance, Amazon RDS automatically creates a primary DB instance and synchronously replicates the data to a standby instance in a different Availability Zone (AZ).",
+            "In the event of a planned or unplanned outage of the primary DB instance, Amazon RDS automatically fails over to the standby replica, typically within 60-120 seconds. This process is fully automated and requires no manual intervention.",
+            "Multi-AZ deployments help mitigate the impact of common database failures, AZ outages, and even server-level issues. They are designed for high availability and automatic failover.",
+            "For database engine versions that support it, Multi-AZ deployments also simplify database patching, as RDS can apply updates to the standby replica before performing a failover, reducing the overall downtime window."
+        ]
+    },
+    {
+        "question": "What are Service Control Policies (SCPs) in AWS Organizations and how are they used?",
+        "ground_truth": "Service Control Policies (SCPs) are a type of policy in AWS Organizations that you can use to manage permissions in your organization. SCPs define the maximum available permissions for all accounts in an Organizational Unit (OU) or the entire organization. They *do not* grant permissions; instead, they *filter* or *restrict* permissions granted by IAM policies. They are used for enforcing guardrails and ensuring compliance across multiple AWS accounts.",
+        "contexts": [
+            "Service Control Policies (SCPs) are policies that you can use to manage permissions in your organization. SCPs offer central control over the maximum available permissions for all accounts in your organization or within a specific Organizational Unit (OU).",
+            "SCPs do not grant permissions to accounts or users. Instead, they specify the maximum permissions that an IAM identity-based policy or resource-based policy can grant.",
+            "An SCP allows you to establish guardrails that limit the services and actions that users and roles in affected accounts can access. For example, you can deny access to specific regions or prevent the creation of certain resource types.",
+            "When an SCP is attached to an OU or the root of the organization, all member accounts under that OU or root are affected. Any permissions granted by an IAM policy must also be allowed by the applicable SCPs."
+        ]
+    },
+    {
+        "question": "What are the key differences between Amazon SQS Standard and FIFO queues, and when should I use each?",
+        "ground_truth": "Amazon SQS offers Standard queues and FIFO (First-In, First-Out) queues. Standard queues provide at-least-once delivery and best-effort ordering, meaning messages might be delivered more than once and out of order. They offer high throughput. FIFO queues guarantee exactly-once processing and strict message ordering. They have a lower throughput limit compared to Standard queues. Use Standard for high-volume, non-ordered messages (e.g., event processing where order doesn't matter), and FIFO for critical applications where order and deduplication are essential (e.g., financial transactions, order processing).",
+        "contexts": [
+            "Amazon SQS offers two types of message queues: Standard queues and FIFO (First-In, First-Out) queues. Each type offers different capabilities for message delivery and ordering.",
+            "Standard queues offer best-effort ordering, which ensures that messages are generally delivered in the same order as they are sent, but occasionally, a message might be delivered out of order. They guarantee at-least-once delivery, meaning a message might be delivered multiple times.",
+            "FIFO queues provide exact message ordering. The order in which messages are sent and received is strictly preserved. FIFO queues also support exactly-once processing, ensuring that a message is delivered once and remains available until a consumer processes and deletes it.",
+            "Choose Standard queues when you need maximum throughput, best-effort ordering, and can tolerate occasional duplicate messages. Choose FIFO queues when you require strict message ordering, unique message processing (deduplication), and where throughput is secondary to order and uniqueness, such as for financial transactions or command sequencing."
+        ]
+    },
+    {
+        "question": "What AWS services can I use to monitor the health and performance of my EC2 instances, and what metrics are available?",
+        "ground_truth": "AWS CloudWatch is the primary service for monitoring EC2 instances. It collects and tracks metrics like CPU utilization, network I/O, disk I/O, and status checks (system status and instance status). For more granular operating system-level metrics (e.g., memory utilization, disk space), you need to install the CloudWatch Agent. AWS Systems Manager can also provide operational data, and CloudTrail logs API calls for auditing.",
+        "contexts": [
+            "Amazon CloudWatch is the fundamental monitoring service for AWS. It collects and processes raw data from EC2 instances into readable, near real-time metrics. Default metrics include CPU utilization, network packets in/out, disk read/write bytes/operations, and status check failures.",
+            "CloudWatch provides two status checks for EC2 instances: System Status Checks (checks the underlying AWS infrastructure) and Instance Status Checks (checks the instance's operating system and configuration).",
+            "To gather more detailed metrics from your EC2 instances, such as memory utilization, disk space usage, and custom application metrics, you need to install the CloudWatch Agent on your instances. This agent sends OS-level data to CloudWatch.",
+            "AWS Systems Manager also offers capabilities for operational insights, including collecting operational data through Explorer and OpsCenter, which can provide a unified view of your instances' health and issues.",
+            "AWS CloudTrail records API calls and related events made by users, roles, or AWS services in your account, which can be useful for auditing changes related to EC2 instances."
+        ]
+    },
+    {
+        "question": "What are some best practices for implementing Infrastructure as Code (IaC) using AWS CloudFormation or CDK?",
+        "ground_truth": "Best practices for IaC include modularizing your templates (e.g., using nested stacks or CDK constructs) for reusability, managing state in version control, implementing automated testing (linting, unit, integration tests), using parameters and mappings for configurable values, implementing least privilege for deployment roles, and conducting peer reviews of templates. Drift detection can also help maintain configuration consistency.",
+        "contexts": [
+            "Modularize your IaC templates: Break down large infrastructure deployments into smaller, reusable components using nested stacks in CloudFormation or custom constructs in AWS CDK. This improves maintainability and promotes reusability.",
+            "Version control is paramount. Store all your IaC templates and code in a version control system like Git. This enables tracking changes, collaboration, and easy rollback to previous states.",
+            "Implement automated testing for your IaC. This includes linting to ensure syntax correctness, unit tests for individual components, and integration tests to validate the deployed infrastructure.",
+            "Use parameters, mappings, and conditions to make your templates configurable and adaptable to different environments (e.g., dev, test, prod) without modifying the core template itself.",
+            "Employ the principle of least privilege for the IAM roles that deploy or update your CloudFormation stacks or CDK applications, ensuring they only have the necessary permissions.",
+            "Regularly review your IaC definitions and implement drift detection to identify unintended changes to your infrastructure outside of your IaC process."
+        ]
+    },
+    {
+        "question": "What are the primary methods for monitoring CPU utilization of an Amazon EC2 instance, and what metrics are available?",
+        "ground_truth": "Primary methods for monitoring EC2 CPU utilization involve Amazon CloudWatch. CloudWatch automatically collects metrics like `CPUUtilization`, which represents the percentage of allocated EC2 compute units currently in use. You can monitor these metrics through the CloudWatch console, create alarms based on thresholds, and visualize them using dashboards. For more granular, application-level insights, you might also use agents like the CloudWatch agent to collect custom metrics from within the instance.",
+        "contexts": [
+            "Amazon CloudWatch is the monitoring and observability service for AWS resources and applications running on AWS. It collects and processes raw data from EC2 instances into readable, near real-time metrics.",
+            "The `CPUUtilization` metric is a standard EC2 instance metric provided by CloudWatch, representing the percentage of allocated EC2 compute units that are currently in use on the instance.",
+            "Users can access EC2 metrics through the CloudWatch console, set up alarms to notify them when specific thresholds are breached (e.g., CPUUtilization > 80% for 5 minutes), and build custom dashboards for visualization.",
+            "For collecting more detailed or custom metrics from within an EC2 instance, such as memory utilization or specific application logs, the CloudWatch agent can be installed and configured."
+        ]
+    },
+    {
+        "question": "How can I implement automatic scaling for Amazon ECS tasks based on resource utilization or custom metrics?",
+        "ground_truth": "Automatic scaling for Amazon ECS tasks is primarily achieved using ECS Service Auto Scaling, which integrates with Amazon CloudWatch. You define scaling policies (target tracking, step scaling, or simple scaling) based on CloudWatch metrics like CPU utilization, memory utilization, or custom metrics emitted by your application. When a metric breaches a defined threshold, ECS Service Auto Scaling will adjust the desired count of tasks in your ECS service.",
+        "contexts": [
+            "ECS Service Auto Scaling allows you to automatically increase or decrease the desired count of tasks in your Amazon ECS service. This helps maintain application availability and optimize costs.",
+            "Service Auto Scaling leverages Amazon CloudWatch metrics to determine when to scale. Common metrics include `CPUUtilization` and `MemoryUtilization` for the ECS service.",
+            "You can configure different scaling policy types: Target Tracking scaling (e.g., maintain 75% CPU utilization), Step Scaling, or Simple Scaling. Target Tracking is generally recommended for its simplicity and effectiveness.",
+            "For custom scaling behaviors, you can emit custom metrics from your applications to CloudWatch and then configure ECS Service Auto Scaling policies to react to these custom metrics."
+        ]
+    },
+    {
+        "question": "What are the key best practices for securing Amazon S3 buckets against unauthorized access and data breaches?",
+        "ground_truth": "Securing S3 buckets involves several best practices: enabling S3 Block Public Access to prevent unintended public exposure, using S3 bucket policies and IAM policies for fine-grained access control, encrypting data at rest using S3 default encryption (SSE-S3, SSE-KMS, or SSE-C) and in transit with HTTPS, enabling S3 Versioning and MFA Delete for data protection, and logging all access requests with S3 access logging or AWS CloudTrail for auditing.",
+        "contexts": [
+            "AWS recommends enabling S3 Block Public Access at both the account and bucket levels to prevent all public access to S3 buckets unless explicitly and intentionally configured otherwise.",
+            "Access to S3 buckets should be controlled using a combination of IAM policies for users and roles, and S3 bucket policies for resource-based permissions, following the principle of least privilege.",
+            "Data stored in S3 should be encrypted at rest. Amazon S3 offers default encryption options like SSE-S3 (S3-managed keys), SSE-KMS (AWS Key Management Service), or SSE-C (customer-provided keys).",
+            "To protect against accidental deletions or overwrites, S3 Versioning should be enabled. For an additional layer of security, configure Multi-Factor Authentication (MFA) Delete for critical objects.",
+            "Enable S3 server access logging or AWS CloudTrail for S3 data events to record all requests made to your S3 bucket, providing an audit trail for security analysis."
+        ]
+    },
+    {
+        "question": "How can I mitigate or reduce the impact of cold starts on AWS Lambda function performance?",
+        "ground_truth": "To mitigate AWS Lambda cold starts, several strategies can be employed. Provisioned Concurrency pre-initializes execution environments, ensuring low latency. Optimizing function code and dependencies to minimize package size and execution time reduces startup time. Choosing a larger memory configuration can sometimes allocate more CPU, speeding up initialization. Using compiled languages (like Java, Go) generally has higher cold start times than interpreted languages (Node.js, Python), so language choice matters. Avoiding VPC access when not necessary also helps, as VPC ENI creation adds latency. Finally, setting up dummy invocations (keep-alives) with CloudWatch Events can keep functions warm, though this is less efficient than Provisioned Concurrency.",
+        "contexts": [
+            "AWS Lambda Provisioned Concurrency feature allows you to pre-initialize a requested number of execution environments for your function, ensuring low latency starts for a set number of invocations.",
+            "Minimizing your Lambda function's deployment package size, optimizing your code dependencies, and reducing initialization time within your function handler can significantly reduce cold start durations.",
+            "Increasing the memory allocated to a Lambda function can also allocate a proportionally larger share of CPU power, potentially speeding up the initialization and execution phases, thereby reducing cold start impact.",
+            "Functions configured to access resources within a Virtual Private Cloud (VPC) require the creation of an Elastic Network Interface (ENI), which can introduce additional latency during cold starts. Only use VPC access when essential.",
+            "Using compiled languages (e.g., Java, C#, Go) typically results in larger runtimes and higher cold start latencies compared to interpreted languages (e.g., Python, Node.js)."
+        ]
+    },
+    {
+        "question": "What are the common strategies for implementing a multi-region disaster recovery plan on AWS?",
+        "ground_truth": "Common strategies for multi-region disaster recovery on AWS include Backup and Restore, Pilot Light, Warm Standby, and Multi-Site Active/Active. Backup and Restore involves backing up data to another region and restoring it upon disaster. Pilot Light maintains core services in a secondary region, ready for full deployment. Warm Standby keeps a scaled-down but running version of the application in the secondary region. Multi-Site Active/Active runs full application stacks in multiple regions simultaneously, distributing traffic for highest availability and lowest RTO/RPO.",
+        "contexts": [
+            "**Backup and Restore**: This strategy involves regularly backing up data and configuration to another AWS region. In a disaster, you restore the backups to a new environment in the recovery region. This offers the highest RTO/RPO but is cost-effective.",
+            "**Pilot Light**: A 'pilot light' disaster recovery strategy keeps a minimal, scaled-down version of your core services running in the recovery region. This includes essential databases and critical components, allowing for faster recovery than Backup and Restore.",
+            "**Warm Standby**: This approach maintains a fully functional but scaled-down version of your application in the recovery region. It includes databases, application servers, and other components, allowing for quicker failover and lower RTO than Pilot Light.",
+            "**Multi-Site Active/Active (Hot Standby)**: This strategy involves running your entire application stack simultaneously in multiple AWS regions, distributing live traffic across them. It provides the highest availability, lowest RTO/RPO, but also incurs the highest cost.",
+            "The choice of disaster recovery strategy depends on your application's specific Recovery Time Objective (RTO) and Recovery Point Objective (RPO) requirements, as well as budget constraints."
+        ]
+    },
+    {
+        "question": "What are the recommended best practices for building robust and secure CI/CD pipelines using AWS services?",
+        "ground_truth": "Recommended CI/CD best practices on AWS include using services like AWS CodeCommit for source control, CodeBuild for compilation and testing, CodeDeploy for deployment, and CodePipeline to orchestrate the workflow. Implement infrastructure as code (IaC) with AWS CloudFormation or CDK for consistent environments. Automate security scanning within the pipeline (SAST/DAST). Secure access to pipeline resources using IAM roles and policies with least privilege. Ensure immutable deployments, track changes using version control, and monitor pipeline health with CloudWatch.",
+        "contexts": [
+            "Leverage AWS native services like AWS CodeCommit for secure source control, AWS CodeBuild for compiling code and running tests, AWS CodeDeploy for automated deployments, and AWS CodePipeline to orchestrate the entire workflow.",
+            "Adopt Infrastructure as Code (IaC) principles using tools like AWS CloudFormation or AWS CDK to define and provision your infrastructure and application environments consistently across all stages of the pipeline.",
+            "Integrate security into every stage of the pipeline ('Shift Left'). This includes automated static application security testing (SAST), dynamic application security testing (DAST), and dependency vulnerability scanning.",
+            "Implement strict IAM policies and roles for pipeline components to ensure the principle of least privilege, restricting access to sensitive resources and operations to only what is necessary.",
+            "Prefer immutable deployments where new instances or containers are provisioned with the updated application, rather than patching existing ones. This reduces configuration drift and improves reliability. Also, ensure all changes are version-controlled."
+        ]
+    },
+    {
+        "question": "What are effective strategies for optimizing costs associated with Amazon EC2 instances?",
+        "ground_truth": "Effective EC2 cost optimization strategies include right-sizing instances to match workload requirements, leveraging different purchasing options like Savings Plans and Reserved Instances for predictable workloads, and using Spot Instances for fault-tolerant and flexible applications. Deleting unused or idle resources, scheduling instances to run only when needed, and utilizing Auto Scaling to dynamically adjust capacity also contribute to significant savings. Regularly review costs with AWS Cost Explorer.",
+        "contexts": [
+            "**Right-sizing** your EC2 instances means choosing the instance type that precisely matches your workload's compute, memory, and storage requirements, avoiding over-provisioning and wasted resources.",
+            "For predictable workloads, **AWS Savings Plans** offer significant discounts (up to 72%) in exchange for a commitment to a consistent amount of compute usage (e.g., $10/hour for 1 year). **Reserved Instances (RIs)** offer similar savings for specific instance types.",
+            "**Spot Instances** allow you to bid on unused EC2 capacity, offering up to 90% savings compared to On-Demand prices. They are ideal for fault-tolerant, flexible applications that can tolerate interruptions.",
+            "Identify and terminate unused or idle EC2 instances and associated resources (EBS volumes, Elastic IPs) that are no longer serving a purpose. Implement automation to stop or terminate instances outside of business hours for non-production environments.",
+            "Utilize **Amazon EC2 Auto Scaling** to automatically adjust the number of instances in your fleet based on demand, ensuring you pay only for the capacity you need at any given time."
+        ]
+    },
+    {
+        "question": "How would you approach troubleshooting performance bottlenecks in an Amazon RDS PostgreSQL database?",
+        "ground_truth": "Troubleshooting RDS PostgreSQL performance involves several steps. First, check Amazon CloudWatch metrics for CPU utilization, memory usage, disk I/O, and database connections to identify resource contention. Use Performance Insights to visualize database load, top SQL queries, and wait events. Analyze slow queries using the `pg_stat_statements` extension or RDS slow query logs. Review database parameters for optimal configuration, ensure appropriate instance type and storage, and analyze execution plans for inefficient queries. Finally, check for deadlocks or long-running transactions.",
+        "contexts": [
+            "Begin by monitoring key Amazon CloudWatch metrics for your RDS instance, including `CPUUtilization`, `FreeableMemory`, `DiskQueueDepth`, `ReadIOPS`, `WriteIOPS`, and `DatabaseConnections` to pinpoint potential resource bottlenecks.",
+            "Leverage Amazon RDS Performance Insights to visualize the database load and identify the top SQL queries, hosts, users, and wait events that are consuming the most resources during the identified bottleneck period.",
+            "Enable and review the `pg_stat_statements` extension to track execution statistics for all SQL statements, helping to identify frequently run and slow queries. Alternatively, enable PostgreSQL slow query logs for analysis.",
+            "Examine the database parameter group associated with your RDS instance, specifically parameters related to memory, caching, and connection limits, to ensure they are optimized for your workload.",
+            "Analyze the execution plans of identified slow queries using `EXPLAIN` or `EXPLAIN ANALYZE` to understand how PostgreSQL processes them and identify opportunities for index creation or query rewriting."
+        ]
+    },
+    {
+        "question": "What are the recommended methods for securing Amazon API Gateway endpoints?",
+        "ground_truth": "Securing Amazon API Gateway endpoints involves using various authorization mechanisms. For serverless backends like Lambda, Lambda Authorizers (formerly Custom Authorizers) or IAM roles and policies can be used. For OIDC and OAuth 2.0 compatible identity providers, Amazon Cognito User Pools are effective. API keys can be used for usage plan throttling and monitoring, but not for robust authentication. For enterprise use cases, integrating with AWS WAF provides protection against common web exploits, and enforcing HTTPS ensures data in transit is encrypted. Finally, enabling resource policies for cross-account access and validating input payloads further enhances security.",
+        "contexts": [
+            "Use **IAM roles and policies** for authenticating and authorizing requests from AWS services or applications that have AWS credentials. This provides fine-grained access control.",
+            "Implement **Lambda Authorizers (formerly Custom Authorizers)** to control access to your API endpoints using a Lambda function. This allows for custom authentication and authorization logic, integrating with various identity providers.",
+            "Integrate **Amazon Cognito User Pools** for user authentication, enabling your API Gateway to directly validate tokens issued by Cognito for users who have signed up through your application.",
+            "For an additional layer of protection against common web exploits, configure **AWS WAF (Web Application Firewall)** with your API Gateway. This helps defend against SQL injection, cross-site scripting, and other attacks.",
+            "While not for strong authentication, **API keys** can be used with usage plans to meter and restrict access to your API based on client usage, providing a mechanism for rate limiting and throttling.",
+            "Always enforce **HTTPS** for all API communication to ensure data is encrypted in transit, protecting against eavesdropping and tampering."
+        ]
+    },
+    {
+        "question": "What are the essential AWS services and practices for monitoring a serverless application consisting of AWS Lambda, API Gateway, and DynamoDB?",
+        "ground_truth": "Essential monitoring for a serverless application on AWS involves Amazon CloudWatch for collecting metrics, logs, and setting alarms for Lambda invocations, errors, duration, API Gateway latency and errors, and DynamoDB read/write capacity and throttles. AWS X-Ray is crucial for distributed tracing across Lambda, API Gateway, and DynamoDB, providing end-to-end visibility. CloudWatch Logs aggregates all service logs for centralized analysis. CloudWatch Dashboards offer a unified view of key metrics. Alarms should be set up for critical thresholds (e.g., Lambda error rates, API Gateway 5xx errors, DynamoDB throttles) to proactively detect issues.",
+        "contexts": [
+            "**Amazon CloudWatch** is central to serverless monitoring, collecting metrics for AWS Lambda (invocations, errors, duration, throttles), API Gateway (latency, 4xx/5xx errors), and DynamoDB (consumed read/write capacity units, throttled events).",
+            "Utilize **AWS X-Ray** for end-to-end tracing of requests as they flow through your serverless application. This provides a detailed service map, performance bottlenecks, and error rates across Lambda, API Gateway, and DynamoDB.",
+            "All logs from Lambda functions and API Gateway access logs are typically sent to **CloudWatch Logs**. Centralize and analyze these logs to debug issues, identify patterns, and gain operational insights.",
+            "Create **CloudWatch Dashboards** to visualize key metrics from all your serverless components in a single, customizable view, making it easier to monitor the health and performance of your application at a glance.",
+            "Configure **CloudWatch Alarms** on critical metrics, such as high Lambda error rates, increased API Gateway 5xx errors, or DynamoDB throttled events, to receive notifications proactively when issues arise."
+        ]
+    },
+    {
+        "question": "What factors should I consider when choosing an Amazon EC2 instance type for a new application, and how do they impact performance?",
+        "ground_truth": "When selecting an EC2 instance type, key factors include CPU (compute performance), memory (RAM), storage options (EBS-optimized, instance store, local NVMe), and networking performance. Different instance families (e.g., General Purpose, Compute Optimized, Memory Optimized) are designed for specific workloads. For example, compute-optimized instances (C-series) are ideal for CPU-bound applications like high-performance web servers, while memory-optimized instances (R-series) are better for memory-intensive applications like in-memory databases.",
+        "contexts": [
+            "Amazon EC2 instance types comprise varying combinations of CPU, memory, storage, and networking capacity, offering the flexibility to choose the appropriate mix of resources for your applications.",
+            "Compute Optimized instances (C, M6i, C6g) are ideal for compute-bound applications that benefit from high-performance processors, such as high-performance web servers, batch processing, and media transcoding.",
+            "Memory Optimized instances (R, X2gd, R6i) are designed for workloads that process large datasets in memory, including high-performance relational and NoSQL databases, distributed web scale in-memory caches, and enterprise applications.",
+            "General Purpose instances (M, T, A1) provide a balance of compute, memory, and networking resources, and are a good choice for a wide range of applications such as web servers and small to medium databases.",
+            "Consider your application's specific requirements for CPU cycles, RAM, storage I/O, and network throughput to select the most cost-effective and performant instance type."
+        ]
+    },
+    {
+        "question": "How can I secure an Amazon S3 bucket to ensure only authorized users and services can access its objects?",
+        "ground_truth": "To secure an S3 bucket, you can use several mechanisms: S3 bucket policies for broad permissions, IAM policies attached to users/roles for fine-grained control, Access Control Lists (ACLs) for specific object permissions (though bucket policies are preferred), and S3 Block Public Access settings to prevent accidental public exposure. Additionally, enable server-side encryption and use S3 Versioning for data integrity and recovery.",
+        "contexts": [
+            "Amazon S3 offers various access control mechanisms, including S3 bucket policies, IAM policies, and S3 Access Control Lists (ACLs), to manage permissions for your buckets and objects.",
+            "S3 bucket policies are resource-based policies that grant or deny permissions to specific AWS principals for the objects within a bucket.",
+            "IAM policies are identity-based policies that can be attached to IAM users, groups, or roles, defining what actions they can perform on AWS resources, including S3 buckets.",
+            "S3 Block Public Access provides settings to block public access to S3 buckets and objects at the account level or bucket level, preventing accidental public exposure of your data.",
+            "For data at rest, consider enabling S3 server-side encryption (SSE-S3, SSE-KMS, or SSE-C) to protect your objects from unauthorized access."
+        ]
+    },
+    {
+        "question": "What are the essential best practices for managing the AWS account root user, and why is it important to follow them?",
+        "ground_truth": "The AWS account root user has unrestricted access to all resources. Essential best practices include: never using the root user for daily tasks, deleting its access keys, enabling Multi-Factor Authentication (MFA) on it, and using it solely for initial setup and a few account-level tasks. This minimizes the security risk associated with its comprehensive permissions.",
+        "contexts": [
+            "The AWS account root user has complete access to all AWS services and resources in the account. This high level of privilege makes it crucial to manage the root user carefully.",
+            "Do not use the root user for everyday tasks, even administrative ones. Instead, create an IAM user for administrative access and use it for daily operations.",
+            "Enable Multi-Factor Authentication (MFA) on your root user account. MFA provides an extra layer of security by requiring a second factor of authentication.",
+            "Delete any root user access keys. You typically don't need root access keys for any AWS operations, as most administrative tasks can be performed by IAM users with appropriate permissions.",
+            "The root user should only be used for a few account and service management tasks, such as changing your AWS Support plan or closing your AWS account."
+        ]
+    },
+    {
+        "question": "What are the common methods for establishing secure network connectivity between an on-premises data center and an Amazon VPC?",
+        "ground_truth": "Common methods for connecting an on-premises data center to an Amazon VPC securely include AWS Direct Connect for a dedicated network connection, and AWS Site-to-Site VPN for encrypted tunnels over the public internet. Direct Connect offers higher bandwidth and consistent network performance, while Site-to-Site VPN is quicker to set up and more cost-effective for lower bandwidth needs.",
+        "contexts": [
+            "AWS provides several options for extending your on-premises networks into an Amazon Virtual Private Cloud (VPC), including AWS Direct Connect and AWS Site-to-Site VPN.",
+            "AWS Direct Connect creates a dedicated network connection from your premises to AWS, offering consistent network performance, increased bandwidth, and reduced network costs.",
+            "AWS Site-to-Site VPN creates an encrypted connection between your data center or branch office and your AWS VPCs over the public internet.",
+            "Site-to-Site VPN is generally quicker to establish compared to Direct Connect, making it suitable for immediate connectivity needs or for testing.",
+            "Direct Connect is often preferred for mission-critical applications requiring high throughput and low latency, whereas Site-to-Site VPN is a good option for secure connections with less stringent performance requirements."
+        ]
+    },
+    {
+        "question": "What are the different ways to invoke an AWS Lambda function, and in which scenarios would each method be appropriate?",
+        "ground_truth": "AWS Lambda functions can be invoked synchronously, asynchronously, or through event source mappings. Synchronous invocation is suitable for immediate responses (e.g., API Gateway, ELB). Asynchronous invocation is for background tasks where an immediate response isn't needed (e.g., S3 event notifications, SNS). Event source mappings connect Lambda to stream-based services like Kinesis or SQS, polling for records and invoking the function.",
+        "contexts": [
+            "AWS Lambda functions can be invoked in several ways, broadly categorized into synchronous invocations, asynchronous invocations, and invocations through event source mappings.",
+            "Synchronous invocations occur when a client invokes the function and waits for the response. Examples include API Gateway HTTP requests, Application Load Balancer, and direct SDK calls.",
+            "Asynchronous invocations are used when the invoker does not wait for a response. Lambda queues the event and retries on failure. Services like S3, SNS, and CloudWatch Events typically invoke Lambda asynchronously.",
+            "Event source mappings are used to process items from stream-based services like Amazon Kinesis and DynamoDB Streams, or queue-based services like Amazon SQS. Lambda polls the stream or queue for new records and invokes the function.",
+            "Choose synchronous invocation for real-time processing and immediate feedback, asynchronous for event-driven workflows and decoupled services, and event source mappings for processing continuous data streams or message queues."
+        ]
+    },
+    {
+        "question": "How do I deploy a containerized application to Amazon Elastic Container Service (ECS), assuming I have a Docker image?",
+        "ground_truth": "To deploy a containerized application on Amazon ECS, you first need to define a Task Definition, which describes your application's containers, their images, CPU, memory, ports, and volumes. Then, create an ECS Service to maintain the desired number of tasks, run and maintain the containers, and optionally integrate with a Load Balancer. You can choose between EC2 launch type (managing your own EC2 instances) or Fargate launch type (serverless, AWS manages infrastructure).",
+        "contexts": [
+            "Deploying a containerized application on Amazon ECS involves defining a Task Definition, which acts as a blueprint for your application, specifying the Docker image, CPU, memory, and networking configuration for each container.",
+            "After defining your Task Definition, you create an ECS Service. An ECS service allows you to run and maintain a specified number of instances of a task definition simultaneously in an Amazon ECS cluster.",
+            "ECS supports two launch types: EC2 and Fargate. With the EC2 launch type, you manage your own fleet of EC2 instances, giving you more control. With Fargate, AWS manages the underlying infrastructure for you.",
+            "For applications requiring high availability and load distribution, an ECS service can be configured to integrate with an Elastic Load Balancer (ELB) to distribute traffic across your tasks.",
+            "The ECS cluster is a logical grouping of tasks or container instances. You must have an active cluster before you can deploy services or run standalone tasks."
+        ]
+    },
+    {
+        "question": "How can I set up an Amazon CloudWatch alarm to notify me when an EC2 instance's CPU utilization exceeds a certain threshold?",
+        "ground_truth": "To set up a CloudWatch alarm for EC2 CPU utilization, you need to define the metric (e.g., `CPUUtilization`), select the EC2 instance, specify the threshold (e.g., 80%), and configure the evaluation period (e.g., 5 minutes for 3 consecutive periods). Then, choose an action, typically sending a notification to an Amazon SNS topic, which can then deliver alerts via email, SMS, or other endpoints.",
+        "contexts": [
+            "Amazon CloudWatch enables you to monitor your AWS resources and the applications you run on AWS. You can create alarms that automatically initiate actions if a metric goes beyond a specified threshold.",
+            "To create an alarm for EC2 CPU utilization, you select the `CPUUtilization` metric from the `AWS/EC2` namespace. You'll then specify the specific EC2 instance ID you wish to monitor.",
+            "Define the threshold for the alarm, for example, 'greater than or equal to 80%'. You also specify the period (e.g., 5 minutes) and how many consecutive periods the threshold must be breached (e.g., 3 data points within 3 periods).",
+            "When the alarm state changes (e.g., from OK to ALARM), you can configure an action. A common action is to send a notification to an Amazon SNS topic.",
+            "An Amazon SNS topic can deliver notifications to various subscribers, including email addresses, SMS messages, or other AWS services like SQS queues or Lambda functions, ensuring you are promptly alerted."
+        ]
+    },
+    {
+        "question": "What are the fundamental stages in a basic Continuous Integration and Continuous Delivery (CI/CD) pipeline using AWS CodePipeline and CodeBuild?",
+        "ground_truth": "A basic CI/CD pipeline with AWS CodePipeline and CodeBuild typically involves three main stages: Source, Build, and Deploy. The Source stage fetches code from a repository (e.g., CodeCommit, GitHub). The Build stage, powered by CodeBuild, compiles code, runs tests, and produces artifacts. The Deploy stage then deploys these artifacts to a target environment (e.g., S3, EC2, ECS, Lambda) using services like CodeDeploy.",
+        "contexts": [
+            "AWS CodePipeline is a continuous delivery service that automates your release pipelines for fast and reliable application and infrastructure updates.",
+            "A typical CodePipeline structure includes several stages, with the most common being Source, Build, and Deploy.",
+            "The Source stage is where your pipeline detects changes in your source code repository, such as AWS CodeCommit, GitHub, or Amazon S3, and retrieves the latest version.",
+            "The Build stage uses AWS CodeBuild to compile source code, run unit tests, and produce build artifacts like Docker images or deployable application packages.",
+            "The Deploy stage is where CodePipeline integrates with services like AWS CodeDeploy, Amazon ECS, AWS Lambda, or Amazon S3 to deploy the artifacts produced by the build stage to your target environment."
+        ]
+    },
+    {
+        "question": "How can I scale an Amazon RDS for PostgreSQL instance to handle increased read traffic and improve performance?",
+        "ground_truth": "To scale an Amazon RDS for PostgreSQL instance to handle increased read traffic, the primary method is to create Read Replicas. Read Replicas allow you to offload read-heavy database workloads from your primary instance, improving read performance and overall throughput. You can also scale up the primary instance by modifying its instance type (e.g., CPU, memory) for general performance improvement, though this involves a brief downtime.",
+        "contexts": [
+            "Amazon RDS for PostgreSQL provides several options to scale your database instance to meet growing demand, particularly for read-heavy workloads.",
+            "The most common way to scale for increased read traffic is by creating Amazon RDS Read Replicas. Read Replicas allow you to elastically scale out beyond the capacity constraints of a single DB instance.",
+            "Read Replicas function as standalone database instances that asynchronously replicate data from a primary DB instance. Applications can direct their read queries to the replicas, reducing the load on the primary instance.",
+            "For general performance improvements or to handle increased write traffic, you can modify the primary DB instance's class (e.g., instance type) to one with more CPU, memory, or I/O capacity. This typically involves a brief outage.",
+            "For highly demanding transactional workloads, consider using Amazon Aurora with its distributed storage system and automatic scaling capabilities, which is compatible with PostgreSQL."
+        ]
+    },
+    {
+        "question": "What are the key differences between AWS Security Groups and Network Access Control Lists (NACLs) in a VPC, and when should each be used?",
+        "ground_truth": "AWS Security Groups act as stateful firewalls at the instance level, allowing or denying traffic based on rules, and applying only to inbound and outbound traffic *associated with an instance*. NACLs, on the other hand, are stateless firewalls at the subnet level, processing rules in order and applying to *all* inbound and outbound traffic for a subnet. Security Groups are generally preferred for instance-level access control, while NACLs provide an additional, broader layer of network-level security.",
+        "contexts": [
+            "AWS provides two main features for network security in a VPC: Security Groups and Network Access Control Lists (NACLs).",
+            "Security Groups act as a virtual firewall for your EC2 instances. They are stateful, meaning if you allow an inbound request, the outbound response is automatically allowed, and vice versa.",
+            "Security Group rules are 'allow-only'; you cannot explicitly deny traffic. They apply at the instance level, controlling traffic to and from the network interfaces of instances.",
+            "Network Access Control Lists (NACLs) act as a stateless firewall at the subnet level. They process rules in order, and you must explicitly allow both inbound and outbound traffic.",
+            "NACLs allow you to explicitly deny traffic with specific rules. They provide a coarse-grained layer of security for subnets, while Security Groups provide finer-grained security for individual instances."
+        ]
+    },
+    {
+        "question": "How do I choose the right EC2 instance type for a memory-intensive application?",
+        "ground_truth": "For memory-intensive applications, you should consider EC2 M6g, R6g, or X2gd instances, which are optimized for large datasets in memory, high-performance databases, and real-time analytics. These instances offer high memory-to-vCPU ratios.",
+        "contexts": [
+            "Amazon EC2 M6g instances are general-purpose instances providing a balance of compute, memory, and networking resources, suitable for a wide range of workloads including medium databases and web servers.",
+            "Amazon EC2 R6g instances are memory-optimized instances designed for memory-intensive applications such as high-performance databases, distributed web scale in-memory caches, and analytics.",
+            "For applications requiring even larger in-memory datasets and high compute capacity, the EC2 X2gd instances, featuring high memory-to-vCPU ratios, are an excellent choice.",
+            "When selecting an EC2 instance, consider the workload's primary resource needs: compute, memory, storage, or network performance."
+        ]
+    },
+    {
+        "question": "What are the benefits of enabling versioning on an S3 bucket and how does it help with accidental deletions?",
+        "ground_truth": "S3 object versioning keeps multiple versions of an object in the same bucket. This protects against accidental deletions or overwrites by allowing you to retrieve previous versions of an object. When an object is deleted, a delete marker is created, but the object itself is not removed, making recovery possible.",
+        "contexts": [
+            "S3 Versioning enables you to keep multiple versions of an object in the same bucket. You can use S3 Versioning to preserve, retrieve, and restore every version of every object stored in your Amazon S3 bucket.",
+            "Versioning protects against unintended overwrites or accidental deletions by ensuring that previous versions of an object can always be recovered.",
+            "When an object is 'deleted' in a versioned bucket, Amazon S3 doesn't actually remove the object. Instead, it adds a delete marker to the object, which becomes the current version.",
+            "To recover an accidentally deleted object, you simply delete the delete marker, making the previous version the current one again.",
+            "Once versioning is enabled for a bucket, it cannot be disabled, only suspended. When suspended, new objects won't get unique version IDs, but existing versions remain."
+        ]
+    },
+    {
+        "question": "When should I choose AWS Fargate over EC2 launch types for my Amazon ECS services?",
+        "ground_truth": "Choose Fargate when you want to run containers without managing the underlying EC2 instances, abstracting away server provisioning, patching, and scaling. Use EC2 launch types if you need more granular control over your server infrastructure, custom AMIs, or specific instance types for compliance or cost optimization.",
+        "contexts": [
+            "AWS Fargate is a serverless compute engine for containers that works with both Amazon ECS and Amazon EKS. Fargate removes the need to provision and manage servers, letting you focus on designing and building your applications.",
+            "With the EC2 launch type, you have full control over the underlying EC2 instances that power your ECS cluster. This allows for custom instance configurations, persistent storage, and specific OS requirements.",
+            "Fargate handles the server infrastructure management, including scaling, patching, and security updates, abstracting these operational tasks away from the developer.",
+            "If your application requires specific hardware characteristics, custom kernel modules, or stringent compliance regulations that necessitate direct server access, the EC2 launch type is typically preferred.",
+            "For many modern microservices architectures and applications where operational overhead reduction is a priority, Fargate provides a compelling serverless option."
+        ]
+    },
+    {
+        "question": "What happens if a CloudFormation stack update fails, and how can I roll back?",
+        "ground_truth": "If a CloudFormation stack update fails, CloudFormation automatically attempts to roll back all resources to their previous state before the update began. You can also manually initiate a rollback to a previous successful state or address the errors and retry the update after troubleshooting.",
+        "contexts": [
+            "When a stack update fails, AWS CloudFormation automatically rolls back the stack to its previous operational state. This ensures that the stack remains in a known good configuration.",
+            "CloudFormation's automatic rollback helps prevent a stack from being left in an inconsistent or partially updated state if an error occurs during an update.",
+            "You can troubleshoot the cause of a failed update by inspecting the events in the CloudFormation console or CloudWatch logs, then attempt to update the stack again with corrections.",
+            "In certain scenarios, you might need to manually roll back a stack if the automatic rollback mechanism is insufficient or if you want to explicitly revert to a specific previous template.",
+            "The rollback process attempts to delete any resources created during the failed update and restore any resources that were modified to their state prior to the update attempt."
+        ]
+    },
+    {
+        "question": "What is the principle of least privilege in AWS IAM, and why is it important?",
+        "ground_truth": "The principle of least privilege dictates that users and roles should only be granted the minimum permissions necessary to perform their tasks. This is crucial for security as it minimizes the potential blast radius if credentials are compromised, reducing the risk of unauthorized access or actions.",
+        "contexts": [
+            "The principle of least privilege is a security best practice that recommends granting only the necessary permissions for a user or service to perform its intended task, and no more.",
+            "Applying least privilege reduces the attack surface by limiting what an entity can do within your AWS environment, even if its credentials are stolen or compromised.",
+            "Granting excessive permissions can lead to unauthorized actions, data breaches, or accidental deletions, significantly increasing security risks.",
+            "AWS IAM policies should be crafted to specify exactly what actions are allowed on which resources, under what conditions, to adhere to the principle of least privilege.",
+            "Regularly review and refine IAM policies to ensure they remain aligned with the least privilege principle as application and user needs evolve."
+        ]
+    },
+    {
+        "question": "Can you explain the typical stages in an AWS CodePipeline for a CI/CD workflow?",
+        "ground_truth": "A typical AWS CodePipeline involves Source, Build, Test, and Deploy stages. The Source stage fetches code from a repository (e.g., CodeCommit, GitHub), Build compiles code and creates artifacts, Test runs automated tests, and Deploy deploys the application to environments like EC2, ECS, or Lambda.",
+        "contexts": [
+            "An AWS CodePipeline automates your release process for fast and reliable application and infrastructure updates. It typically consists of several stages, each with specific actions.",
+            "The Source stage is where your pipeline begins, pulling source code changes from repositories such as AWS CodeCommit, GitHub, or Amazon S3.",
+            "Following the source, the Build stage compiles your code, runs unit tests, and packages the application into deployable artifacts, often using AWS CodeBuild.",
+            "After building, the Test stage executes various automated tests (e.g., integration tests, end-to-end tests) against the artifacts to ensure quality and functionality.",
+            "Finally, the Deploy stage takes the validated artifacts and deploys them to target environments, which could involve services like AWS EC2, Amazon ECS, AWS Lambda, or AWS Elastic Beanstalk."
+        ]
+    },
+    {
+        "question": "How does an Amazon Aurora Global Database help with disaster recovery across AWS regions?",
+        "ground_truth": "Amazon Aurora Global Database allows a single Aurora database to span multiple AWS regions, enabling fast disaster recovery. It uses storage-based replication to asynchronously replicate data to secondary regions with typical RPO of seconds and RTO of minutes, ensuring high availability even during a regional outage.",
+        "contexts": [
+            "Amazon Aurora Global Database is designed for globally distributed applications, allowing a single Amazon Aurora database to span multiple AWS regions.",
+            "It provides fast disaster recovery from a region-wide outage, typically with a Recovery Point Objective (RPO) of seconds and a Recovery Time Objective (RTO) of minutes.",
+            "Data is replicated asynchronously from the primary region to up to five secondary AWS regions, leveraging Aurora's storage layer for high performance and low latency.",
+            "In the event of an outage in the primary region, one of the secondary regions can be promoted to become the new primary, minimizing downtime and data loss.",
+            "Aurora Global Database utilizes dedicated infrastructure to ensure that replication does not impact the performance of your primary database."
+        ]
+    },
+    {
+        "question": "What is the purpose of tagging AWS resources, especially for cost management?",
+        "ground_truth": "Tagging AWS resources involves assigning key-value pairs (tags) to them. For cost management, tags allow you to categorize and track costs across different projects, departments, or environments. These cost allocation tags can then be activated and used in AWS Cost Explorer to filter and analyze spending.",
+        "contexts": [
+            "AWS tags are labels that you can attach to AWS resources, consisting of a user-defined key and an optional value, making it easier to manage and organize resources.",
+            "For cost management, tags are crucial. By consistently tagging resources with identifiers like 'Project', 'Department', or 'Environment', you can allocate costs accurately.",
+            "Cost allocation tags, once activated in the Billing console, enable you to see a breakdown of your AWS costs by those tags within AWS Cost Explorer or detailed billing reports.",
+            "This granular cost visibility helps organizations understand spending patterns, identify areas for optimization, and charge back costs to internal business units.",
+            "Implementing a consistent tagging strategy is a best practice for governance, resource organization, and precise financial analysis of your AWS expenditure."
+        ]
+    },
+    {
+        "question": "What are \"cold starts\" in AWS Lambda, and how can I minimize their impact?",
+        "ground_truth": "A \"cold start\" in AWS Lambda occurs when your function is invoked after a period of inactivity, requiring AWS to initialize a new execution environment. You can minimize cold start impact by using Provisioned Concurrency, optimizing your function code (e.g., smaller deployment packages, efficient dependency loading), or choosing a larger memory configuration for faster initialization.",
+        "contexts": [
+            "A Lambda cold start refers to the delay experienced when a Lambda function is invoked for the first time or after a period of inactivity, requiring AWS to prepare a new execution environment.",
+            "During a cold start, AWS needs to download the function code, start the runtime, and initialize any application code outside the main handler, which can add latency.",
+            "AWS Lambda Provisioned Concurrency pre-initializes a requested number of execution environments, ensuring that your function is ready to respond immediately to invocations, thus eliminating cold starts.",
+            "Optimizing your function's code by reducing the deployment package size, minimizing external dependencies, and initializing resources outside the handler can significantly reduce cold start times.",
+            "Allocating more memory to a Lambda function can also reduce cold start duration, as CPU is allocated proportionally to memory, leading to faster execution environment initialization."
+        ]
+    },
+    {
+        "question": "How can VPC Flow Logs assist in troubleshooting network connectivity issues within my AWS VPC?",
+        "ground_truth": "VPC Flow Logs capture information about IP traffic going to and from network interfaces in your VPC. They can help troubleshoot network connectivity issues by showing accepted or rejected connections, source/destination IPs, ports, and protocols, allowing you to identify misconfigured security groups, network ACLs, or routing issues.",
+        "contexts": [
+            "VPC Flow Logs is a feature that enables you to capture information about the IP traffic going to and from network interfaces in your VPC.",
+            "Flow log records can be published to Amazon CloudWatch Logs or Amazon S3, allowing for analysis and historical review of network traffic patterns.",
+            "By examining flow logs, you can identify if traffic is being accepted or rejected by security groups or network ACLs, which is a common cause of connectivity problems.",
+            "Flow logs provide details such as source and destination IP addresses, ports, protocols, and the action (ACCEPT or REJECT), which are vital for pinpointing communication failures.",
+            "They are invaluable for diagnosing why certain applications or services cannot communicate, verifying network configurations, and detecting unauthorized traffic patterns."
+        ]
+    },
+    {
+        "question": "How do I configure EC2 Auto Scaling to maintain a minimum of 2 instances and a maximum of 10 instances across multiple Availability Zones?",
+        "ground_truth": "You would define a desired capacity of instances for your Auto Scaling Group, setting the minimum size (MinSize) to 2 and the maximum size (MaxSize) to 10. To ensure distribution, you must specify multiple Availability Zones when creating or updating the Auto Scaling Group.",
+        "contexts": [
+            "An Auto Scaling group's desired capacity is the number of instances that you want to have running in the group. You can set the minimum (MinSize) and maximum (MaxSize) capacity limits for your Auto Scaling group.",
+            "When you create an Auto Scaling group, you must specify the VPC and one or more Availability Zones for your instances. Amazon EC2 Auto Scaling distributes instances across the specified Availability Zones.",
+            "To maintain a healthy fleet, Amazon EC2 Auto Scaling automatically adjusts the number of EC2 instances in your Auto Scaling group based on conditions you define, or maintains a target number of instances."
+        ]
+    },
+    {
+        "question": "What is S3 Versioning and how does it help with accidental deletions or overwrites of objects?",
+        "ground_truth": "S3 Versioning keeps multiple versions of an object in the same S3 bucket, identified by a unique version ID. If an object is accidentally deleted, a delete marker is created but the previous versions remain accessible. Overwrites also create new versions, preserving the old ones, allowing you to restore earlier states of an object by retrieving a non-current version.",
+        "contexts": [
+            "S3 Versioning enables you to keep multiple versions of an object in the same bucket. You can use S3 Versioning to preserve, retrieve, and restore every version of every object in your Amazon S3 bucket.",
+            "When you delete an object from a versioning-enabled bucket, Amazon S3 inserts a delete marker instead of permanently deleting the object. The object's previous versions are retained and can be restored.",
+            "If an existing object is overwritten in a versioning-enabled bucket, Amazon S3 creates a new version of the object instead of replacing the original, allowing you to retrieve previous states using its version ID."
+        ]
+    },
+    {
+        "question": "What are some key best practices for managing IAM users and roles in AWS?",
+        "ground_truth": "Key IAM best practices include granting least privilege, using IAM roles for applications on EC2 instances instead of long-lived access keys, enabling Multi-Factor Authentication (MFA) for root and privileged users, rotating access keys regularly, and removing unused IAM users and credentials.",
+        "contexts": [
+            "Grant least privilege: When you create IAM policies, define the exact permissions needed, and only grant those permissions. Do not grant more permissions than necessary.",
+            "Use IAM roles for applications that run on Amazon EC2 instances instead of storing AWS credentials on the instance, as roles provide temporary credentials.",
+            "Enable multi-factor authentication (MFA) for the AWS account root user and for all privileged IAM users to add an extra layer of security.",
+            "Regularly rotate your access keys. Changing access keys frequently helps reduce the risk of a compromised key being used for an extended period.",
+            "Delete unused credentials. If an IAM user or role is no longer needed, delete it to reduce the potential attack surface and simplify management."
+        ]
+    },
+    {
+        "question": "Explain what a 'cold start' is in AWS Lambda and common ways to mitigate its impact.",
+        "ground_truth": "A Lambda 'cold start' occurs when a function is invoked after a period of inactivity or during a scaling event, requiring AWS to provision a new execution environment. This initialization process (downloading code, initializing runtime) adds latency to the invocation. Mitigation strategies include increasing memory allocation, utilizing Provisioned Concurrency, or optimizing deployment package size.",
+        "contexts": [
+            "A cold start occurs when Lambda has to initialize a new execution environment for your function, which happens for the first invocation after a period of inactivity, or when scaling up to handle increased load.",
+            "During a cold start, Lambda downloads your code, initializes the runtime, and runs any initialization code outside of your handler function, all contributing to invocation latency.",
+            "To reduce cold start times, consider allocating more memory to your function, as this also increases CPU power and network bandwidth, speeding up initialization.",
+            "Provisioned Concurrency keeps functions initialized and hyper-ready to respond in milliseconds, significantly reducing cold start durations for critical, latency-sensitive workloads.",
+            "Keeping your deployment package small helps reduce the time it takes for Lambda to download your function code during a cold start, thereby improving response times."
+        ]
+    },
+    {
+        "question": "How do I create a CloudWatch alarm to notify me when the CPU utilization of an EC2 instance exceeds 80% for 5 consecutive minutes?",
+        "ground_truth": "You would create a CloudWatch alarm using the `CPUUtilization` metric in the `AWS/EC2` namespace for your specific EC2 instance. Configure the alarm to trigger when the average `CPUUtilization` is `GreaterThanOrEqualToThreshold` (80%) over a `Period` of 300 seconds (5 minutes) for `EvaluationPeriods` of 1. You can then link this alarm to an Amazon SNS topic for notification.",
+        "contexts": [
+            "CloudWatch alarms watch a single metric over a specified time period, and perform one or more actions based on the value of the metric relative to a threshold.",
+            "To monitor EC2 CPU utilization, you'll specify the `CPUUtilization` metric within the `AWS/EC2` namespace, along with the instance ID dimension.",
+            "You can configure an alarm to go into an `ALARM` state when the average of a metric (e.g., CPUUtilization) is `GreaterThanOrEqualToThreshold` (e.g., 80%) for a duration specified by `Period` (e.g., 300 seconds or 5 minutes) and `EvaluationPeriods` (e.g., 1 consecutive period).",
+            "When an alarm changes state from OK to ALARM, it can publish notifications to an Amazon SNS topic or perform other automated actions like stopping an instance."
+        ]
+    },
+    {
+        "question": "What is VPC Peering and what are its limitations regarding transitive routing?",
+        "ground_truth": "VPC Peering is a networking connection between two Virtual Private Clouds (VPCs) that allows instances in either VPC to communicate with each other using private IP addresses as if they were in the same network. A significant limitation is that VPC peering connections do not support transitive routing; traffic cannot be routed from a third VPC to one of the peered VPCs through the other peered VPC.",
+        "contexts": [
+            "A VPC peering connection is a networking connection between two VPCs that enables you to route traffic between them privately. Instances in either VPC can communicate with each other as if they are within the same network.",
+            "You can establish a VPC peering connection between your own VPCs, or with a VPC in another AWS account or different AWS Regions.",
+            "VPC peering connections do not support transitive routing. This means that if VPC A is peered with VPC B, and VPC B is peered with VPC C, traffic from VPC A cannot directly reach VPC C through VPC B.",
+            "Traffic between peered VPCs remains within the AWS network and does not traverse the public internet, enhancing security and reducing latency."
+        ]
+    },
+    {
+        "question": "How does an Amazon RDS Multi-AZ deployment enhance database availability and what happens during a failover?",
+        "ground_truth": "An RDS Multi-AZ deployment enhances database availability by synchronously replicating your database to a standby instance in a different Availability Zone. This provides automatic failover capabilities. During a failover, if the primary database becomes unavailable (due to an AZ outage, primary instance failure, or database engine issue), RDS automatically switches the CNAME record for your DB instance to point to the healthy standby replica, minimizing downtime without requiring application changes.",
+        "contexts": [
+            "With a Multi-AZ deployment, Amazon RDS automatically provisions and maintains a synchronous standby replica in a different Availability Zone from your primary DB instance.",
+            "In the event of a planned database maintenance, DB instance failure, or Availability Zone outage, Amazon RDS automatically switches over to the standby replica, typically completing in 60-120 seconds.",
+            "Multi-AZ deployments significantly enhance database availability and durability, making them an ideal choice for production database workloads requiring high uptime.",
+            "During a failover, the DNS endpoint for your DB instance remains the same but is updated to point to the IP address of the standby replica, eliminating the need to change your application's connection string."
+        ]
+    },
+    {
+        "question": "Describe the 'All-at-once' and 'Canary' deployment strategies in AWS CodeDeploy and their typical use cases.",
+        "ground_truth": "The 'All-at-once' deployment strategy, an in-place deployment, updates all instances in the deployment group simultaneously. It's fast but carries high risk, making it suitable for non-critical environments or testing. The 'Canary' strategy, on the other hand, deploys the new application version to a small, specified percentage of instances first, monitors their health, and then gradually rolls out to the remaining instances. This phased approach minimizes impact and is ideal for critical production environments where risk mitigation is paramount.",
+        "contexts": [
+            "CodeDeploy supports various deployment types. In an In-place deployment, the application on each instance in the deployment group is stopped, the latest application revision is installed, and the new version of the application is started.",
+            "With an all-at-once configuration, the new application version is deployed to all target instances at the same time. This is the fastest but also the riskiest approach as an issue affects all instances immediately.",
+            "A Canary deployment rolls out a new application version to a small percentage of instances first. After a specified period, if no issues are detected, it proceeds to deploy to the remaining instances.",
+            "Canary deployments are ideal for production environments as they allow you to test the new version with a small user base before a full rollout, minimizing potential impact of issues on your entire fleet."
+        ]
+    },
+    {
+        "question": "What are the primary differences between `gp2`/`gp3` and `io1`/`io2` EBS volume types, and when would you choose one over the other?",
+        "ground_truth": "`gp2`/`gp3` are General Purpose SSD volumes, offering a balance of price and performance suitable for most workloads, including boot volumes and development environments. `gp3` provides independent provisioning of IOPS and throughput, offering more flexibility and cost savings. `io1`/`io2` are Provisioned IOPS SSD volumes, designed for I/O-intensive, mission-critical applications like large transactional databases that require consistent high performance and low latency. `io2` offers higher durability and IOPS per GiB than `io1`. Choose `gp3` for cost-effective general-purpose use, and `io2` for demanding workloads needing predictable high IOPS.",
+        "contexts": [
+            "General Purpose SSD (gp2/gp3) volumes offer a good balance of price and performance for a wide variety of transactional workloads, including boot volumes, dev/test environments, and low-latency interactive applications.",
+            "gp3 volumes allow you to provision IOPS and throughput independently of storage capacity, providing more flexibility and potentially lower costs than gp2 for similar performance levels.",
+            "Provisioned IOPS SSD (io1/io2) volumes are designed for I/O-intensive workloads that require consistent high performance and low latency, such as large transactional databases and data warehousing applications.",
+            "io2 Block Express volumes provide the highest performance and durability among EBS volume types, offering up to 256,000 IOPS and 4,000 MiB/s throughput with 99.999% durability.",
+            "Choose gp3 for cost-effective general purpose storage, and io2 for critical production applications needing extremely high and consistent IOPS performance."
+        ]
+    },
+    {
+        "question": "How can AWS Systems Manager Patch Manager help automate OS patching for EC2 instances, and what operating systems does it support?",
+        "ground_truth": "AWS Systems Manager Patch Manager automates the process of applying security updates and other fixes to managed EC2 instances across various operating systems. It allows administrators to define patch baselines (rules for auto-approving patches), schedule patching windows to minimize disruption, and provides compliance reporting. Patch Manager supports a broad range of operating systems, including different versions of Windows Server, Amazon Linux, Ubuntu Server, Red Hat Enterprise Linux, and SUSE Linux Enterprise Server.",
+        "contexts": [
+            "AWS Systems Manager Patch Manager automates the process of patching managed Amazon EC2 instances with security updates and other critical fixes, reducing manual effort and improving security posture.",
+            "You can define patch baselines, which specify rules for auto-approving patches, such as all critical updates, and a list of approved or rejected patches for specific operating systems.",
+            "Patch Manager allows you to scan instances for missing patches and install patches during pre-defined maintenance windows to minimize disruption to your applications.",
+            "Supported operating systems include various versions of Windows Server, Amazon Linux, Amazon Linux 2, Ubuntu Server, Red Hat Enterprise Linux, SUSE Linux Enterprise Server, and CentOS.",
+            "Automating patching with Systems Manager improves security and ensures compliance by providing detailed patch compliance reports across your instance fleet."
+        ]
+    },
+    {
+        "question": "When should I choose Amazon ECS over Amazon EKS for my containerized applications?",
+        "ground_truth": "Amazon ECS (Elastic Container Service) is generally simpler to set up and manage, making it a good choice for users who prefer a more opinionated, AWS-native container orchestration service and don't require Kubernetes-specific features or portability. It integrates deeply with other AWS services. Amazon EKS (Elastic Kubernetes Service) provides a managed Kubernetes control plane, offering greater flexibility, portability across cloud environments, and access to the vast Kubernetes ecosystem, making it suitable for organizations already using or committed to Kubernetes.",
+        "contexts": [
+            "Amazon ECS (Elastic Container Service) is a fully managed container orchestration service that makes it easy to deploy, manage, and scale containerized applications. It's often preferred for its tight integration with other AWS services and simpler operational model for users who want an AWS-native experience.",
+            "Amazon EKS (Elastic Kubernetes Service) is a managed Kubernetes service that makes it easy to run Kubernetes on AWS without needing to install, operate, and maintain your own Kubernetes control plane. It's chosen by users who need the flexibility, open-source ecosystem, and portability that Kubernetes offers.",
+            "If your team is already familiar with Kubernetes or requires multi-cloud compatibility, EKS might be a better fit. However, if you're looking for a simpler, AWS-native solution with less operational overhead, ECS is often the preferred choice.",
+            "ECS offers a Fargate launch type, allowing you to run containers without managing servers or clusters. EKS also supports Fargate, but the underlying orchestration and API remain Kubernetes-centric."
+        ]
+    },
+    {
+        "question": "What are some effective strategies to minimize cold start latency for AWS Lambda functions?",
+        "ground_truth": "To minimize Lambda cold start latency, you can allocate more memory to the function, as it often correlates with CPU and network resources. Using provisioned concurrency to keep functions pre-initialized is highly effective. Packaging smaller deployment artifacts and using interpreted languages (like Python or Node.js) or newer runtimes (e.g., Node.js 16+, Python 3.9+) can also help. Avoiding large dependencies and ensuring efficient initialization code are also good practices.",
+        "contexts": [
+            "Increase the memory allocated to your Lambda function. More memory often translates to more CPU and network bandwidth, which can significantly reduce initialization time for compute-intensive tasks.",
+            "Utilize Provisioned Concurrency. This feature keeps a specified number of execution environments pre-initialized and ready to respond instantly to your function's invocations, eliminating cold starts for those requests.",
+            "Optimize your deployment package size. Smaller package sizes mean faster download times to the execution environment, thus reducing the cold start duration. Remove unnecessary files and dependencies.",
+            "Choose a lightweight runtime and optimize initialization code. Interpreted languages like Python or Node.js typically have faster cold starts than compiled languages like Java or C#. Ensure your global initialization code outside the handler is efficient and doesn't load excessive resources."
+        ]
+    },
+    {
+        "question": "How can I grant an EC2 instance in Account A secure read-only access to an S3 bucket in Account B using IAM roles?",
+        "ground_truth": "To grant an EC2 instance in Account A read-only access to an S3 bucket in Account B, you need to create an IAM role in Account A with an S3 read-only policy. Then, in Account B, modify the S3 bucket policy for the target bucket to explicitly allow the IAM role from Account A to perform `s3:GetObject` actions. The `Principal` in the bucket policy should specify the ARN of the IAM role from Account A.",
+        "contexts": [
+            "In Account A, create an IAM role for the EC2 instance. Attach an IAM policy to this role that grants `s3:GetObject` (read-only) permissions to the specific S3 bucket in Account B, or to all S3 buckets if appropriate.",
+            "In Account B, navigate to the target S3 bucket's permissions. Edit the bucket policy to allow the IAM role from Account A to perform read actions. The `Principal` element in the bucket policy's statement should be the ARN of the IAM role you created in Account A.",
+            "The `Action` in the S3 bucket policy should be `s3:GetObject` to allow read access. The `Resource` should specify the ARN of the S3 bucket and its objects, e.g., `arn:aws:s3:::your-bucket-name/*`.",
+            "Ensure that the EC2 instance in Account A is launched or configured with the IAM role created in Account A. The instance will then assume this role to make requests to the S3 bucket in Account B, leveraging the permissions granted by both the role policy and the bucket policy."
+        ]
+    },
+    {
+        "question": "What is AWS Database Migration Service (DMS) primarily used for, and what kind of migrations does it support?",
+        "ground_truth": "AWS Database Migration Service (DMS) is primarily used for migrating databases to AWS efficiently and securely. It supports both homogeneous migrations (e.g., Oracle to Oracle) and heterogeneous migrations (e.g., Oracle to PostgreSQL or SQL Server to Aurora). DMS can perform one-time migrations as well as continuous data replication with minimal downtime, making it suitable for various migration scenarios, including analytics and continuous sync.",
+        "contexts": [
+            "AWS Database Migration Service (DMS) helps you migrate databases to AWS quickly and securely. The source database remains fully operational during the migration, minimizing downtime to applications that rely on the database.",
+            "DMS supports migrations between various database platforms. This includes homogeneous migrations, where the source and target database engines are the same (e.g., MySQL to Amazon RDS for MySQL).",
+            "It also excels in heterogeneous migrations, where the source and target database engines are different (e.g., Oracle to Amazon Aurora PostgreSQL, or Microsoft SQL Server to Amazon RDS for MySQL). This often requires a schema conversion tool alongside DMS.",
+            "DMS can be used for one-time data migration, but it also supports continuous data replication (Change Data Capture - CDC) to keep source and target databases synchronized, which is useful for near-zero downtime migrations and continuous data ingestion."
+        ]
+    },
+    {
+        "question": "What are the recommended AWS native services for building a robust CI/CD pipeline, and what role does each play?",
+        "ground_truth": "For a robust CI/CD pipeline using AWS native services, AWS CodeCommit serves as the source code repository. AWS CodeBuild compiles source code, runs tests, and produces deployable artifacts. AWS CodeDeploy automates code deployment to various compute services like EC2, Lambda, or ECS. AWS CodePipeline orchestrates the entire workflow, linking these services together from source commit to deployment and providing an end-to-end continuous delivery solution.",
+        "contexts": [
+            "AWS CodePipeline orchestrates your entire CI/CD process. It automates the various stages required to release software, including building, testing, and deploying your code every time there is a code change.",
+            "AWS CodeCommit is a fully managed source control service that hosts secure Git repositories. It's used as the initial stage in CodePipeline to detect code changes and trigger the pipeline.",
+            "AWS CodeBuild is a fully managed continuous integration service that compiles source code, runs tests, and produces software packages that are ready to deploy. It takes artifacts from CodeCommit and outputs build artifacts for subsequent stages.",
+            "AWS CodeDeploy automates code deployments to any instance, including Amazon EC2 instances, AWS Fargate, AWS Lambda, and on-premises servers. It ensures your application is deployed consistently and reliably in the deployment stage of your pipeline."
+        ]
+    },
+    {
+        "question": "Explain the key differences between EC2 Reserved Instances and EC2 Savings Plans for cost optimization.",
+        "ground_truth": "EC2 Reserved Instances (RIs) offer a discount in exchange for committing to a specific instance type, region, and operating system for a 1-year or 3-year term. Savings Plans, on the other hand, offer more flexibility by committing to a consistent amount of compute usage (measured in $/hour) for 1-year or 3-year terms, regardless of instance family, region, OS, or tenancy. Savings Plans generally provide broader savings across various compute services (EC2, Fargate, Lambda) and automatically apply to usage that falls within the committed amount, making them more flexible than RIs.",
+        "contexts": [
+            "EC2 Reserved Instances (RIs) provide significant discounts (up to 75%) compared to On-Demand pricing by committing to a specific instance configuration (instance type, region, OS) for a 1-year or 3-year term.",
+            "EC2 Savings Plans offer a more flexible discount model. You commit to a consistent amount of compute usage per hour (e.g., $10/hour) for 1-year or 3-year terms. This commitment automatically applies to your usage regardless of instance family, region, operating system, or tenancy.",
+            "A key difference is that RIs are tied to specific instance types, while Savings Plans offer flexibility across instance families and even other compute services like Fargate and Lambda (with Compute Savings Plans).",
+            "Savings Plans are generally simpler to manage and can provide greater savings optimization across dynamic workloads compared to managing multiple specific RIs, as they automatically apply to the eligible usage up to the committed amount."
+        ]
+    },
+    {
+        "question": "What are the essential AWS services and metrics for monitoring serverless applications built with AWS Lambda and Amazon API Gateway?",
+        "ground_truth": "Essential AWS services for monitoring serverless applications (Lambda/API Gateway) include Amazon CloudWatch for collecting logs, metrics, and setting alarms. Key metrics for Lambda are `Invocations`, `Errors`, `Duration`, and `Throttles`. For API Gateway, important metrics include `Count` (total requests), `4XXError`, `5XXError`, and `Latency`. AWS X-Ray is crucial for distributed tracing, helping to visualize request flows and pinpoint performance bottlenecks across services.",
+        "contexts": [
+            "Amazon CloudWatch is the primary monitoring service for serverless applications. It collects and tracks metrics, collects and monitors log files (via CloudWatch Logs), and sets alarms based on specified thresholds.",
+            "For AWS Lambda functions, essential CloudWatch metrics to monitor include `Invocations` (how many times the function was triggered), `Errors` (failed invocations), `Duration` (execution time), and `Throttles` (when invocation limits are exceeded).",
+            "For Amazon API Gateway, key CloudWatch metrics include `Count` (the total number of requests), `4XXError` and `5XXError` (client and server-side errors, respectively), and `Latency` (end-to-end request processing time).",
+            "AWS X-Ray provides end-to-end visibility into serverless applications. It collects data about requests that your application serves, enabling you to trace requests through various services like API Gateway and Lambda, identify performance bottlenecks, and understand the underlying components."
+        ]
+    },
+    {
+        "question": "What are the main options for securely connecting an on-premises data center to an AWS Virtual Private Cloud (VPC)?",
+        "ground_truth": "The main options for securely connecting an on-premises data center to an AWS VPC are AWS Site-to-Site VPN and AWS Direct Connect. Site-to-Site VPN uses IPsec tunnels over the public internet, offering a cost-effective and relatively quick setup, suitable for encrypted communication over existing internet connections. AWS Direct Connect provides a dedicated, private network connection between your data center and AWS, offering higher bandwidth, lower latency, and consistent network performance, ideal for mission-critical applications and large data transfers.",
+        "contexts": [
+            "AWS Site-to-Site VPN establishes encrypted connections between your on-premises network and your Amazon VPCs over the public internet. It's a quick and cost-effective way to create secure connections using IPsec tunnels.",
+            "AWS Direct Connect provides a dedicated private network connection from your premises to AWS. This bypasses the public internet, resulting in reduced network costs, increased bandwidth throughput, and a more consistent network experience compared to internet-based connections.",
+            "While Site-to-Site VPN is suitable for many use cases and quick to implement, Direct Connect is preferred for workloads requiring high bandwidth, low latency, and consistent network performance, such as large data transfers, real-time applications, or compliance requirements.",
+            "You can combine both options for increased resiliency. For instance, using AWS Direct Connect as the primary connection and a Site-to-Site VPN as a backup over the public internet ensures continuous connectivity even if the private connection fails."
+        ]
+    },
+    {
+        "question": "Explain how AWS services can support different disaster recovery (DR) strategies, considering Recovery Point Objective (RPO) and Recovery Time Objective (RTO) requirements.",
+        "ground_truth": "AWS offers various DR strategies tailored to different RPO and RTO needs. 'Backup and Restore' (high RPO/RTO) uses services like AWS Backup or S3 for data storage and EC2 AMIs for quick restoration. 'Pilot Light' (lower RPO/RTO) involves running minimal core services in the DR region and scaling up on demand, utilizing services like RDS snapshots, EC2, and ASG. 'Warm Standby' (even lower RPO/RTO) maintains a scaled-down but active replica of the production environment, ready for quick cutover using services like multi-AZ RDS and auto-scaling. 'Multi-site Active/Active' (near-zero RPO/RTO) runs full production in multiple regions simultaneously, leveraging global services like Route 53 and cross-region replication for data and traffic management.",
+        "contexts": [
+            "**Backup and Restore**: This strategy has the highest RPO and RTO. AWS Backup, S3, and EC2 AMIs are used to regularly back up data and entire machine images. In a disaster, resources are restored from these backups in a new region or availability zone.",
+            "**Pilot Light**: With lower RPO/RTO, this strategy involves maintaining a minimal copy of your core infrastructure in the DR region. Services like RDS snapshots, replicated S3 buckets, and pre-built EC2 AMIs are common. When a disaster strikes, you quickly scale up the 'pilot light' resources to full production capacity.",
+            "**Warm Standby**: Offers even lower RPO/RTO. A scaled-down but fully functional replica of your production environment is continuously running in the DR region. Services like Multi-AZ RDS, cross-region replication for databases, and Auto Scaling Groups for EC2 instances help maintain readiness for a rapid failover.",
+            "**Multi-site Active/Active**: This strategy provides the lowest RPO and RTO (near zero). Your application runs simultaneously in multiple active regions, with traffic distributed globally (e.g., via Route 53 Weighted Routing). Data replication across regions (e.g., S3 cross-region replication, database replication) ensures consistency and immediate failover."
+        ]
+    },
+    {
+        "question": "What are the fundamental security best practices for Amazon S3 buckets to prevent unauthorized access and data breaches?",
+        "ground_truth": "Fundamental S3 security best practices include blocking public access by default, enforcing encryption at rest (with S3-managed keys or KMS) and in transit (using HTTPS/SSL), and implementing least privilege access with IAM policies and bucket policies. Enabling S3 Block Public Access is crucial. Additionally, enabling server access logging and CloudTrail for monitoring access, configuring MFA Delete for critical objects, and regularly reviewing bucket policies are vital steps.",
+        "contexts": [
+            "**Block Public Access**: Enable Amazon S3 Block Public Access at both the account and bucket level by default. This feature overrides any existing public access settings and ensures that buckets and objects remain private unless explicitly configured otherwise.",
+            "**Encryption**: Always encrypt data at rest within S3. Use either Server-Side Encryption with S3-managed keys (SSE-S3), KMS keys (SSE-KMS), or client-side encryption. Ensure data in transit is encrypted using HTTPS/SSL endpoints.",
+            "**Least Privilege IAM Policies**: Grant only the necessary permissions to users and roles interacting with S3 buckets. Use IAM policies with specific actions (e.g., `s3:GetObject`, `s3:PutObject`) and resources (specific buckets or prefixes) rather than broad `*` permissions.",
+            "**Bucket Policies**: Supplement IAM policies with S3 bucket policies to enforce access control at the bucket level. Use conditions within bucket policies to restrict access based on IP address, VPC endpoint, or other criteria. Regularly review and audit these policies.",
+            "**Logging and Monitoring**: Enable S3 server access logging to capture detailed records of requests made to your S3 bucket. Integrate with AWS CloudTrail to log all API calls for auditing purposes, and use Amazon Macie for data discovery and sensitive data protection."
+        ]
+    }
+]

@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.log
+.gemini/
+MEMORY.md
+
