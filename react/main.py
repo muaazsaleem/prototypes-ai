@@ -6,10 +6,7 @@ Demonstrates the ReAct (Reasoning + Acting) loop with three tools:
   - calculator: arithmetic expression evaluator
   - summariser: text summarisation via Gemini
 
-Two tasks are run:
-  1. A well-formed task that uses all three tools in sequence.
-  2. A pathological task designed to trigger a tool-call loop.
-
+A well-formed task is run that uses all three tools in sequence.
 A hard step budget halts the agent once N steps are consumed.
 """
 
@@ -184,35 +181,74 @@ TOOLS = {
     "summariser": tool_summariser,
 }
 
+# ── Function Declarations ─────────────────────────────────────────────────────
+
+search_func = {
+    "name": "search",
+    "description": "Searches a simulated knowledge base for factual information.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "The string or topic to look up."
+            }
+        },
+        "required": ["query"],
+    },
+}
+
+calculator_func = {
+    "name": "calculator",
+    "description": "Safely evaluates an arithmetic mathematical expression. Supports basic operators (+, -, *, /, **).",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "expr": {
+                "type": "string",
+                "description": "The mathematical expression to evaluate (e.g. '1.44 * 10**9 * 0.001')."
+            }
+        },
+        "required": ["expr"],
+    },
+}
+
+summariser_func = {
+    "name": "summariser",
+    "description": "Summarises the provided text down to a single concise sentence.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "text": {
+                "type": "string",
+                "description": "The source text to summarize."
+            }
+        },
+        "required": ["text"],
+    },
+}
+
+GEMINI_TOOLS = types.Tool(
+    function_declarations=[search_func, calculator_func, summariser_func]
+)
+
 # ── ReAct prompt template ─────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are a ReAct agent. Solve the task step by step using the tools below.
-
-Available tools:
-- search(query)      : search for factual information
-- calculator(expr)   : evaluate a mathematical expression
-- summariser(text)   : summarise a piece of text into one sentence
-
-Output format — you MUST follow this strictly:
-Thought: <your reasoning about what to do next>
-Action: <tool_name>(<argument>)
-
-When you have the final answer output ONLY:
-Final Answer: <your answer>
+SYSTEM_PROMPT = """You are a helpful ReAct agent. Solve the task step by step using the provided tools.
 
 Rules:
-- One Action per turn.
-- Do NOT include Observation in your output; the system provides it.
-- Do NOT output anything outside the Thought/Action/Final Answer format.
+- Do NOT use your own internal knowledge for facts; always use the 'search' tool.
+- Do NOT perform math yourself; always use the 'calculator' tool.
+- You MUST wait for the tool observation before taking the next step.
+- Gather all necessary information before providing your final answer.
 """
-
 
 # ── Model call with exponential-backoff retry ────────────────────────────────
 
 
 def _call_model_with_retry(
     contents: list, max_retries: int = 5, base_delay: float = 10.0
-) -> str:
+):
     """Invokes the LLM using the current history, retrying on transient errors.
 
     Logs the input prompt block before executing the call. Backs off exponentially
@@ -224,7 +260,7 @@ def _call_model_with_retry(
         base_delay: Initial wait time in seconds before retrying.
 
     Returns:
-        The generated text response from the model.
+        The generated types.GenerateContentResponse from the model.
 
     Side effects:
         Makes network calls to the Gemini API, sleeps the thread on failure,
@@ -234,27 +270,33 @@ def _call_model_with_retry(
 
     for content in contents:
         role = content.role
-        text = "\n".join([p.text for p in content.parts if p.text])
+        display_role = role
 
-        # Override styling if the user message is an Observation
         if role == "user":
-            if text.startswith("Observation:"):
-                label_style = "bold yellow"
-                content_style = "yellow"
-                display_role = "tool"
-            else:
-                label_style = "bold blue"
-                content_style = "blue"
-                display_role = "user"
+            label_style = "bold blue"
+            content_style = "blue"
         elif role == "model":
             label_style = "bold green"
             content_style = "green"
-            display_role = "assistant"
         else:
             label_style = "dim"
             content_style = "dim"
-            display_role = role
 
+        text_parts = []
+        for p in content.parts:
+            if getattr(p, "text", None):
+                text_parts.append(p.text)
+            elif getattr(p, "function_call", None):
+                fc = p.function_call
+                text_parts.append(f"[Function Call: {fc.name}({fc.args})]")
+            elif getattr(p, "function_response", None):
+                fr = p.function_response
+                text_parts.append(f"[Function Response: {fr.name} = {fr.response}]")
+                label_style = "bold yellow"
+                content_style = "yellow"
+                display_role = "tool"
+
+        text = "\n".join(text_parts)
         indent = " " * (len(display_role) + 2)
         wrapped = textwrap.fill(text, width=82, subsequent_indent=indent)
 
@@ -285,9 +327,11 @@ def _call_model_with_retry(
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=SYSTEM_PROMPT,
+                    temperature=0.0,
+                    tools=[GEMINI_TOOLS],
                 ),
             )
-            return response.text.strip()
+            return response
         except Exception as exc:
             is_rate_limit = (
                 "429" in str(exc) or "RESOURCE_EXHAUSTED" in str(exc).upper()
@@ -303,102 +347,19 @@ def _call_model_with_retry(
                 raise
 
 
-# ── Parsing helpers ───────────────────────────────────────────────────────────
-
-
-def parse_agent_output(text: str) -> dict:
-    """Extracts the ReAct components (Thought, Action, Final Answer) from model text.
-
-    Args:
-        text: The raw output string from the ReAct agent.
-
-    Returns:
-        A dictionary containing keys: thought, action, tool, arg, and final_answer.
-    """
-    result = {
-        "thought": "",
-        "action": "",
-        "tool": None,
-        "arg": None,
-        "final_answer": None,
-    }
-
-    # Extract Thought
-    thought_match = re.search(
-        r"Thought:\s*(.+?)(?=Action:|Final Answer:|$)", text, re.DOTALL
-    )
-    if thought_match:
-        result["thought"] = thought_match.group(1).strip()
-
-    # Extract Final Answer
-    final_match = re.search(r"Final Answer:\s*(.+)", text, re.DOTALL)
-    if final_match:
-        result["final_answer"] = final_match.group(1).strip()
-        return result
-
-    # Extract Action: tool_name(argument)
-    action_match = re.search(
-        r"Action:\s*(\w+)\((.+?)\)\s*$", text, re.DOTALL | re.MULTILINE
-    )
-    if action_match:
-        result["action"] = action_match.group(0).replace("Action:", "").strip()
-        result["tool"] = action_match.group(1).strip()
-        result["arg"] = action_match.group(2).strip().strip("\"'")
-
-    return result
-
-
 # ── Loop detection ────────────────────────────────────────────────────────────
 
-
 def detect_loop(history: list[dict], window: int = 3) -> bool:
-    """Evaluates whether the agent is stuck repeating the exact same tool and argument.
-
-    Args:
-        history: A list of dictionary objects describing each step's action.
-        window: The number of consecutive identical actions required to trigger detection.
-
-    Returns:
-        True if a loop is detected, False otherwise.
-    """
+    """Evaluates whether the agent is stuck repeating the exact same tool and argument."""
     if len(history) < window:
         return False
     recent = history[-window:]
-    actions = [(s.get("tool"), s.get("arg")) for s in recent if s.get("tool")]
+    actions = [(s.get("tool"), str(s.get("arg"))) for s in recent if s.get("tool")]
     if len(actions) < window:
         return False
     return len(set(actions)) == 1
 
-
 # ── Display helpers ───────────────────────────────────────────────────────────
-
-
-def print_step(step: int, thought: str, action: str, observation: str) -> None:
-    """Prints the Thought, Action, and Observation for a single ReAct step.
-
-    Args:
-        step: The current 1-based step counter.
-        thought: The parsed reasoning trace.
-        action: The string representation of the tool invocation.
-        observation: The result returned by the invoked tool.
-
-    Side effects:
-        Prints formatted output to the terminal.
-    """
-    console.print(f"\n[bold cyan]> Step {step:02d}[/bold cyan]")
-
-    prefix = "[dim]Thought:[/dim]"
-    wrapped = textwrap.fill(thought, width=88, subsequent_indent="           ")
-    console.print(f"  {prefix} [dim]{wrapped}[/dim]")
-
-    prefix = "[dim]Action:[/dim]"
-    wrapped = textwrap.fill(action, width=88, subsequent_indent="          ")
-    console.print(f"  {prefix}  [magenta]{wrapped}[/magenta]")
-
-    prefix = "[dim]Observe:[/dim]"
-    obs_wrapped = textwrap.fill(observation, width=88, subsequent_indent="          ")
-    console.print(f"  {prefix} [yellow]{obs_wrapped}[/yellow]")
-
 
 def print_stats(
     steps: int,
@@ -408,18 +369,7 @@ def print_stats(
     verdict_color: str,
     **_,
 ) -> None:
-    """Renders a summary table detailing task execution metrics.
-
-    Args:
-        steps: Total steps consumed by the agent.
-        tools_used: A list of strings naming the invoked tools in order.
-        elapsed: The wall-clock execution time in seconds.
-        verdict: The final resolution state of the agent (e.g. Completed).
-        verdict_color: The rich styling color representing the outcome.
-
-    Side effects:
-        Prints a rich Table to the terminal.
-    """
+    """Renders a summary table detailing task execution metrics."""
     table = Table(
         show_header=True, header_style="bold", padding=(0, 2), show_edge=False
     )
@@ -445,25 +395,13 @@ def print_stats(
 
 
 def run_react_agent(task: str, max_steps: int = MAX_STEPS) -> dict:
-    """Executes the ReAct loop until completion, failure, or budget exhaustion.
-
-    Args:
-        task: The high-level instruction given to the agent.
-        max_steps: The absolute maximum number of steps allowed before halting.
-
-    Returns:
-        A dictionary containing run statistics such as steps taken, tools used,
-        elapsed time, and the final verdict string.
-
-    Side effects:
-        Modifies local state lists, interacts with external APIs, and prints logs.
-    """
+    """Executes the ReAct loop using native Function Calling until completion."""
     start = time.time()
 
     contents: list[types.Content] = [
         types.Content(
             role="user",
-            parts=[types.Part(text="Task: " + task)],
+            parts=[types.Part.from_text(text="Task: " + task)],
         )
     ]
 
@@ -473,8 +411,29 @@ def run_react_agent(task: str, max_steps: int = MAX_STEPS) -> dict:
 
     for step in range(1, max_steps + 1):
         # ── Model call ────────────────────────────────────────────────────────
-        raw_output = _call_model_with_retry(contents)
+        response = _call_model_with_retry(contents)
 
+        if not response.candidates or not response.candidates[0].content.parts:
+            console.print("  [bold red]Error:[/bold red] [red]Model returned empty response.[/red]")
+            break
+
+        model_content = response.candidates[0].content
+
+        # Extract textual thought
+        text_parts = [p.text for p in model_content.parts if getattr(p, "text", None)]
+        thought = "\n".join(text_parts).strip()
+
+        # Check for function call
+        fc_part = next((p for p in model_content.parts if getattr(p, "function_call", None)), None)
+        
+        # ── Print Model Response Debug ────────────────────────────────────────
+        debug_texts = []
+        if thought:
+            debug_texts.append(thought)
+        if fc_part:
+            debug_texts.append(f"Function Call: {fc_part.function_call.name}({fc_part.function_call.args})")
+        
+        raw_output = "\n".join(debug_texts)
         wrapped_response = textwrap.fill(
             raw_output, width=82, subsequent_indent="           "
         )
@@ -492,35 +451,57 @@ def run_react_agent(task: str, max_steps: int = MAX_STEPS) -> dict:
         )
         console.print()
 
-        parsed = parse_agent_output(raw_output)
-        thought = parsed["thought"]
-        tool_name = parsed["tool"]
-        tool_arg = parsed["arg"]
-        final_answer = parsed["final_answer"]
+        # ── Print Step Header & Thought ───────────────────────────────────────
+        console.print(f"\n[bold cyan]── Step {step:02d} ──[/bold cyan]")
+        if thought:
+            wrapped_thought = textwrap.fill(thought, width=84, subsequent_indent="    ")
+            console.print(f"  [bold magenta]Thought:[/bold magenta] [dim]{wrapped_thought}[/dim]")
 
-        # ── Final answer ──────────────────────────────────────────────────────
-        if final_answer:
-            print_step(
-                step, thought or "Compiling answer.", "Final Answer", final_answer
+        # ── Handle Native Tool Call or Final Answer ───────────────────────────
+        if fc_part:
+            fc = fc_part.function_call
+            tool_name = fc.name
+            tool_args = fc.args
+            
+            # The schema dictates a single dict entry (e.g. query: "...", expr: "...", text: "...")
+            tool_arg_val = list(tool_args.values())[0] if tool_args else ""
+            
+            action_str = f"{tool_name}({tool_arg_val})"
+            console.print(f"  [bold blue]Action:[/bold blue]  [cyan]Based on the thought, calling -> {action_str}[/cyan]")
+            
+            with console.status(f"[bold yellow]Executing tool: {tool_name}...[/bold yellow]"):
+                if tool_name in TOOLS:
+                    observation_str = TOOLS[tool_name](str(tool_arg_val))
+                else:
+                    observation_str = f"Error: Tool {tool_name} not found."
+                tools_used.append(tool_name)
+
+            wrapped_obs = textwrap.fill(str(observation_str), width=84, subsequent_indent="    ")
+            console.print(f"  [bold yellow]Observation:[/bold yellow] [yellow]{wrapped_obs}[/yellow]")
+
+            # Record step for loop detection
+            step_history.append({"tool": tool_name, "arg": tool_arg_val})
+            
+            # Append model's native parts
+            contents.append(model_content)
+            
+            # Append function response
+            fr_part = types.Part.from_function_response(
+                name=tool_name,
+                response={"result": str(observation_str)}
             )
+            contents.append(types.Content(role="user", parts=[fr_part]))
+            
+        else:
+            # No function call, this must be the final answer
+            final_answer = thought
+            console.print("  [bold blue]Action:[/bold blue]  [cyan]Provide Final Answer[/cyan]")
+            with console.status("[bold green]Compiling final answer...[/bold green]"):
+                time.sleep(0.5)  # small pause for visual effect
+            wrapped_ans = textwrap.fill(final_answer, width=84, subsequent_indent="    ")
+            console.print(f"  [bold green]Final Answer:[/bold green] [green]{wrapped_ans}[/green]")
             halt_reason = "final_answer"
             break
-
-        # ── Execute tool ──────────────────────────────────────────────────────
-        if tool_name and tool_name in TOOLS:
-            observation = TOOLS[tool_name](tool_arg)
-            tools_used.append(tool_name)
-        else:
-            # Model produced malformed output; nudge it back on track
-            observation = "Invalid action. Use format: tool_name(argument)"
-            tool_name = "invalid"
-            tool_arg = raw_output[:60]
-
-        action_str = f"{tool_name}({tool_arg})"
-        print_step(step, thought, action_str, observation)
-
-        # Record step for loop detection
-        step_history.append({"tool": tool_name, "arg": tool_arg})
 
         # ── Loop detection ────────────────────────────────────────────────────
         if detect_loop(step_history, window=3):
@@ -529,16 +510,6 @@ def run_react_agent(task: str, max_steps: int = MAX_STEPS) -> dict:
             )
             halt_reason = "loop_detected"
             break
-
-        # ── Append observation so the model can reason in the next turn ───────
-        contents.append(
-            types.Content(role="model", parts=[types.Part(text=raw_output)])
-        )
-        contents.append(
-            types.Content(
-                role="user", parts=[types.Part(text=f"Observation: {observation}")]
-            )
-        )
 
     else:
         # for-loop exhausted without break — budget exceeded
@@ -590,63 +561,18 @@ def main() -> None:
 
     # ── Task 1: Requires all three tools in sequence ──────────────────────────
     task1 = (
-        "Find the population of India, then calculate what 0.1% of that population is, "
-        "and finally summarise the result in one sentence."
+        "Search for the population of India, then calculate what 0.1% of that population is, "
+        "and finally summarise the result in one sentence. Do not use your own knowledge; "
+        "you MUST use the search tool first."
     )
 
     console.print(
-        Rule("[bold]Task 1 — All three tools in sequence[/bold]", style="white")
+        Rule("[bold]ReAct Agent Task[/bold]", style="white")
     )
     console.print(f"  [bold]Task:[/bold] [dim]{task1}[/dim]")
 
     stats1 = run_react_agent(task1)
     print_stats(**stats1)
-    console.print()
-
-    # ── Task 2: Designed to trigger a tool-call loop ──────────────────────────
-    # The query is pinned to a specific string the model is told to use verbatim.
-    # The search tool responds "retry the same query", trapping the agent in a
-    # loop of calling search("real-time AAPL stock price") indefinitely.
-    task2 = (
-        "Fetch the real-time stock price of AAPL using search('real-time AAPL stock price'). "
-        "The search index is live and will return the price eventually. "
-        "You MUST use that exact query every time. Keep retrying until you get a number."
-    )
-
-    console.print(
-        Rule("[bold]Task 2 — Pathological looping task[/bold]", style="white")
-    )
-    console.print(f"  [bold]Task:[/bold] [dim]{task2}[/dim]")
-
-    stats2 = run_react_agent(task2)
-    print_stats(**stats2)
-    console.print()
-
-    # ── Overall summary ───────────────────────────────────────────────────────
-    console.print(Rule("[bold yellow]Overall Summary[/bold yellow]", style="yellow"))
-
-    summary = Table(title="Results", show_lines=True)
-    summary.add_column("Task", style="bold", min_width=24)
-    summary.add_column("Steps", justify="center")
-    summary.add_column("Tools Called", justify="center")
-    summary.add_column("Elapsed", justify="center")
-    summary.add_column("Verdict", justify="center")
-
-    for label, stats in [("Task 1", stats1), ("Task 2", stats2)]:
-        tool_counts: dict[str, int] = {}
-        for t in stats["tools_used"]:
-            tool_counts[t] = tool_counts.get(t, 0) + 1
-        tools_str = ", ".join(f"{t}×{c}" for t, c in tool_counts.items()) or "none"
-        color = stats["verdict_color"]
-        summary.add_row(
-            label,
-            str(stats["steps"]),
-            tools_str,
-            f"{stats['elapsed']:.2f}s",
-            f"[bold {color}]{stats['verdict']}[/bold {color}]",
-        )
-
-    console.print(summary)
     console.print()
 
 

@@ -12,13 +12,10 @@ from the result* — all in a tight loop. Each cycle is:
 Thought  →  Action (tool call)  →  Observation (tool result)  →  repeat
 ```
 
-This prototype shows both the strength and the failure mode of the pattern:
+This prototype shows the ReAct pattern in action:
 
-- **Task 1** requires three tools in order (search → calculator → summariser). The
+- **The Task** requires three tools in order (search → calculator → summariser). The
   agent calls them in the right sequence and produces a correct final answer.
-
-- **Task 2** asks for information not in the knowledge base. The model keeps calling
-  `search` with rephrased queries, making no progress — a classic ReAct loop.
 
 The key insight: **ReAct is powerful but needs explicit loop detection and step
 budgets**. Without them, a stuck agent runs forever.
