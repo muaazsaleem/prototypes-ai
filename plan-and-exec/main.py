@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Prototype: Plan-and-Execute vs Reactive (ReAct) Agent
+Prototype: Plan-and-Execute Agent
 
-This prototype demonstrates two different agentic architectures handling an intense,
-multi-layered procurement task. The catalog features cascading failures (out-of-stock items
+This prototype demonstrates a Plan-and-Execute agentic architecture handling a
+procurement task. The catalog features cascading failures (out-of-stock items
 whose alternatives are ALSO out of stock).
 
-ReAct adapts dynamically through an intense loop of discovery and correction.
 Plan-and-Execute generates a rigid plan that shatters upon contact with reality.
 
 Updated to use the modern google-genai SDK.
@@ -29,7 +28,7 @@ from rich.text import Text
 console = Console()
 # The new SDK uses a Client object instead of global configuration
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-MODEL = "gemini-2.0-flash"
+MODEL = "gemini-2.5-flash"
 
 # ─── Mock Product Catalog (Intense Scenario) ──────────────────────────────────
 CATALOG: dict[str, dict] = {
@@ -436,64 +435,6 @@ def _run_tool_calls(response: Any, stats: Stats) -> tuple[list[types.Part], str]
     return response_parts, ""
 
 
-# ─── ReAct Agent ──────────────────────────────────────────────────────────────
-
-
-def run_react(task: str, stats: Stats) -> str:
-    """Executes the task using the adaptive ReAct architecture loop.
-
-    The model dynamically calls tools, assesses results, and adjusts its approach
-    if items are out of stock.
-
-    Args:
-        task: The overall request string.
-        stats: The Stats object to track iterations and metrics.
-
-    Returns:
-        The final response string containing the calculation or failure notice.
-
-    Side effects:
-        Makes multiple API calls and prints chat logs.
-    """
-    sys_inst = (
-        "You are a procurement assistant. Use get_item_info to look up prices. "
-        "If an item is out of stock, call search_alternatives to get substitute names, "
-        "then look up those substitutes until you find one that is IN STOCK. "
-        "Use the cheapest available option. Finish with calculate_total."
-    )
-
-    config = types.GenerateContentConfig(
-        system_instruction=sys_inst, tools=_make_tools(include_search_alternatives=True)
-    )
-
-    chat = client.chats.create(model=MODEL, config=config)
-
-    _log_system(sys_inst)
-    _log_input("user", task)
-
-    response = chat.send_message(task)
-    stats.llm_calls += 1
-    _accum_tokens(stats, response)
-    _log_response(_extract_response_content(response))
-
-    for _ in range(30):
-        parts_back, final = _run_tool_calls(response, stats)
-        if final:
-            stats.answer = final
-            stats.success = True
-            break
-
-        tool_content = _extract_tool_content(parts_back)
-        _log_input("tool", tool_content)
-
-        response = chat.send_message(parts_back)
-        stats.llm_calls += 1
-        _accum_tokens(stats, response)
-        _log_response(_extract_response_content(response))
-
-    return stats.answer
-
-
 # ─── Plan-and-Execute Agent ───────────────────────────────────────────────────
 
 
@@ -653,73 +594,40 @@ def run_plan_exec(task: str, stats: Stats) -> str:
 # ─── Results Display ──────────────────────────────────────────────────────────
 
 
-def _cmp(a: int, b: int, lower_is_better: bool = True) -> tuple[str, str]:
-    """Compares two numeric metrics and colors them to indicate the winner.
+def print_stats(stats: Stats) -> None:
+    """Prints execution metrics.
 
     Args:
-        a: The first metric (ReAct).
-        b: The second metric (Plan and Execute).
-        lower_is_better: Boolean flagging if lower numbers are desirable.
-
-    Returns:
-        A tuple of styled strings representing a and b.
-    """
-    if a == b:
-        return str(a), str(b)
-    if (a < b) == lower_is_better:
-        return f"[green]{a}[/]", f"[red]{b}[/]"
-    return f"[red]{a}[/]", f"[green]{b}[/]"
-
-
-def print_comparison(react: Stats, pe: Stats) -> None:
-    """Prints a comparison table of execution metrics between both architectures.
-
-    Args:
-        react: The populated Stats object for the ReAct run.
-        pe: The populated Stats object for the Plan-and-Execute run.
+        stats: The populated Stats object.
 
     Side effects:
         Outputs a formatted Table to the terminal.
     """
     table = Table(
-        title="ReAct vs Plan-and-Execute",
+        title="Plan-and-Execute Performance",
         show_lines=True,
         header_style="bold",
-        min_width=64,
+        min_width=40,
     )
-    table.add_column("Metric", style="bold", min_width=26)
-    table.add_column("ReAct", justify="right", style="cyan", min_width=14)
-    table.add_column("Plan-and-Execute", justify="right", style="magenta", min_width=18)
+    table.add_column("Metric", style="bold", min_width=20)
+    table.add_column("Value", justify="right", style="cyan", min_width=10)
 
-    r_tc, p_tc = _cmp(react.tool_calls, pe.tool_calls)
-    table.add_row("Tool calls (steps)", r_tc, p_tc)
+    table.add_row("Tool calls (steps)", str(stats.tool_calls))
+    table.add_row("LLM API calls", str(stats.llm_calls))
+    table.add_row("Total tokens", str(stats.total_tokens))
+    table.add_row("  ↳ input tokens", f"{stats.input_tokens:,}")
+    table.add_row("  ↳ output tokens", f"{stats.output_tokens:,}")
 
-    r_lc, p_lc = _cmp(react.llm_calls, pe.llm_calls)
-    table.add_row("LLM API calls", r_lc, p_lc)
-
-    r_tt, p_tt = _cmp(react.total_tokens, pe.total_tokens)
-    table.add_row("Total tokens", r_tt, p_tt)
-    table.add_row("  ↳ input tokens", f"{react.input_tokens:,}", f"{pe.input_tokens:,}")
-    table.add_row(
-        "  ↳ output tokens", f"{react.output_tokens:,}", f"{pe.output_tokens:,}"
-    )
-
-    r_wt = f"[yellow]{react.wrong_turns}[/]" if react.wrong_turns else "[green]0[/]"
-    p_wt = f"[red]{pe.wrong_turns}[/]" if pe.wrong_turns else "[green]0[/]"
-    table.add_row("OOS hits (wrong turns)", r_wt, p_wt)
+    wt = f"[red]{stats.wrong_turns}[/]" if stats.wrong_turns else "[green]0[/]"
+    table.add_row("OOS hits (wrong turns)", wt)
 
     table.add_section()
-    r_ok = (
+    ok = (
         "[bold green]✓ complete total[/bold green]"
-        if react.success
+        if stats.success
         else "[bold red]✗ incomplete[/bold red]"
     )
-    p_ok = (
-        "[bold green]✓ complete total[/bold green]"
-        if pe.success
-        else "[bold red]✗ incomplete[/bold red]"
-    )
-    table.add_row("Outcome", r_ok, p_ok)
+    table.add_row("Outcome", ok)
 
     console.print(table)
 
@@ -727,43 +635,31 @@ def print_comparison(react: Stats, pe: Stats) -> None:
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 TASK = (
-    "Calculate the total procurement cost for a senior developer setup: "
-    "1x M3 MacBook Pro, 2x 32-inch 4K monitors, 1x standing desk, "
-    "1x ergonomic chair, 1x mechanical keyboard, and 1x wireless mouse. "
+    "Calculate the total procurement cost for a junior developer setup: "
+    "1x M1 MacBook Pro, 2x 27-inch 4K monitors, 1x standing desk, "
+    "1x ergonomic chair, 1x membrane keyboard, and 1x wireless mouse. "
     "Provide an itemized breakdown and the grand total."
 )
 
 
 def main() -> None:
-    """Main entry point orchestrating the intense architecture comparison.
+    """Main entry point orchestrating the architecture execution.
 
-    Executes a multi-layered procurement task using both ReAct and Plan-and-Execute
-    agents to highlight the value of dynamic adaptation.
+    Executes a multi-layered procurement task using a Plan-and-Execute agent.
 
     Side effects:
         Executes API workflows and logs test summaries to the terminal.
     """
     console.print(
         Panel.fit(
-            "[bold yellow]Plan-and-Execute vs ReAct Agent[/bold yellow]\n"
-            "[dim]A cascading failure scenario forcing high-intensity adaptation.[/dim]\n"
-            "[dim]3 of 6 requested items are OOS. 1 alternative is ALSO OOS.[/dim]",
+            "[bold yellow]Plan-and-Execute Agent[/bold yellow]\n"
+            "[dim]A straightforward scenario where a rigid plan executes perfectly.[/dim]\n"
+            "[dim]All requested items are currently IN STOCK.[/dim]",
             border_style="yellow",
         )
     )
     console.print()
     console.print(Panel(TASK, title="[bold]Task[/bold]", border_style="dim"))
-    console.print()
-
-    # ── ReAct ─────────────────────────────────────────────────────────────────
-    console.print(
-        Rule(
-            "[bold cyan]ReAct Agent (Intense Adaptation Loop)[/bold cyan]", style="cyan"
-        )
-    )
-    console.print()
-    react = Stats(name="ReAct")
-    run_react(TASK, react)
     console.print()
 
     # ── Plan-and-Execute ──────────────────────────────────────────────────────
@@ -779,9 +675,9 @@ def main() -> None:
     console.print()
 
     # ── Summary ───────────────────────────────────────────────────────────────
-    console.print(Rule("[bold yellow]Overall Summary[/bold yellow]", style="yellow"))
+    console.print(Rule("[bold yellow]Summary[/bold yellow]", style="yellow"))
     console.print()
-    print_comparison(react, pe)
+    print_stats(pe)
     console.print()
 
 
