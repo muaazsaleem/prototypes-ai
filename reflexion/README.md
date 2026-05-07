@@ -15,7 +15,13 @@ Reflexion is a self-correction loop. When an agent fails a task, it doesn't just
 The agent is tasked with implementing a Python function `merge_intervals(intervals)`, a classic algorithm with well-known edge cases. 
 
 ### The Challenge
-Merge intervals has enough edge cases (touching boundaries, unsorted input, deep containment) that first attempts often miss 2–3 tests. This makes the improvement arc from Reflexion clearly visible and measurable without relying on hidden constraints.
+Merge intervals has enough edge cases (touching boundaries, unsorted input, deep containment) that first attempts often miss 2–3 tests. 
+
+To make the Reflexion loop even more visible, this prototype includes **Hidden Requirements** that are not mentioned in the initial prompt:
+- **Input Validation**: Handling `None` as input (should return an empty list).
+- **Type Coercion**: Handling lists containing string integers (e.g., `["1", "3"]`) or mixed types.
+
+The agent will likely fail these tests on the first attempt, then use its own reflection to discover and implement the necessary validation and casting logic.
 
 Across 3 attempts:
 1.  **Attempt 1**: Cold start.
