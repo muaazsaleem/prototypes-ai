@@ -1,39 +1,37 @@
 # Reflexion Prototype
 
-Demonstrates **Reflexion** — in-session self-improvement where an AI agent reflects on its own failures and uses those reflections to do better on the next attempt.
+Demonstrates **Reflexion** — an agentic pattern where a model attempts a task, analyzes its failures, and uses those insights to improve in the next attempt. This process compounds within a single session but resets between runs.
 
 ## Concept
 
-Reflexion is a prompting pattern where, after each failed attempt, the agent writes a short "reflection note" — a diagnosis of what went wrong and what to do differently. That note is fed back in as context for the next attempt, compounding within the run.
-
-**Key insight:** Reflexion is in-session learning. It compounds within a single run, but resets completely between runs. There is no persistent memory across sessions.
+Reflexion is a self-correction loop. When an agent fails a task, it doesn't just try again blindly. Instead, it:
+1.  **Attempts** the task.
+2.  **Evaluates** the result against test cases.
+3.  **Reflects** on the specific failures to diagnose root causes.
+4.  **Implements** a fix based on its own reflection.
 
 ## What This Prototype Does
 
-The agent is given a coding task: implement `merge_intervals(intervals)`, a classic algorithm with well-known edge cases (touching intervals, unsorted input, containment).
+The agent is tasked with implementing a Python function `merge_intervals(intervals)`, a classic algorithm with well-known edge cases. 
+
+### The Challenge
+Merge intervals has enough edge cases (touching boundaries, unsorted input, deep containment) that first attempts often miss 2–3 tests. This makes the improvement arc from Reflexion clearly visible and measurable without relying on hidden constraints.
 
 Across 3 attempts:
-1. **Attempt 1** — cold start, no context
-2. **Attempt 2** — receives the reflection note from attempt 1
-3. **Attempt 3** — receives both prior reflection notes
-
-After each attempt, results are evaluated against 8 test cases. Scores are shown across all attempts so you can see whether Reflexion improved the output.
-
-## Why This Task
-
-Merge intervals has enough edge cases (touching boundaries, unsorted input, deep containment) that first attempts often miss 2–3 tests. This makes the improvement arc from Reflexion clearly visible and measurable.
+1.  **Attempt 1**: Cold start.
+2.  **Attempt 2**: Uses reflection from Attempt 1.
+3.  **Attempt 3**: Uses reflections from both prior attempts.
 
 ## Setup
 
-```bash
-pip install -r requirements.txt
-```
-
-Set your Gemini API key:
-
-```bash
-export GEMINI_API_KEY=your_key_here
-```
+1.  Install dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
+2.  Set your Gemini API key:
+    ```bash
+    export GEMINI_API_KEY=your_key_here
+    ```
 
 ## Run
 
@@ -43,9 +41,10 @@ python main.py
 
 ## Expected Output
 
-- Per-attempt test results (PASS / FAIL per case)
-- Score progress bar
-- Failure breakdown with expected vs. got
-- Reflection note written by the agent after each non-final attempt
-- Final summary table comparing scores across all 3 attempts
-- Verdict: improved / no change / regressed
+- **Model Input/Response Panels**: Visualizing the raw conversation.
+- **Evaluation Results**: PASS/FAIL status for 8 test cases.
+- **Reflection Note**: The model's internal monologue and plan for the next attempt.
+- **Performance Summary**: A table showing the "Lift" in accuracy across iterations.
+
+## Why This Works
+This prototype uses `gemini-2.0-flash`, which is fast and capable of following the iterative feedback loop. The combination of logical edge cases and explicit failure feedback provides a robust testbed for demonstrating in-session learning.

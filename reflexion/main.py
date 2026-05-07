@@ -40,145 +40,72 @@ except KeyError:
 
 # ── Task Definition ──────────────────────────────────────────────────────────
 
-# The task involves implementing a grading function with specific edge cases
-# designed to challenge initial coding assumptions (missing keys, partial credit).
+# The task involves implementing the classic merge_intervals algorithm.
+# We explicitly do NOT tell the model to handle `None` inputs or invalid types
+# (like strings mixed with integers) in the prompt.
+# The tests will secretly pass these invalid inputs, forcing a failure on Attempt 1.
+# The model will use reflection to discover it needs to add input validation/type casting.
 TASK_DESCRIPTION = """\
-Write a Python function called grade_exam(answers, key, partial_credit=False).
+Write a Python function called merge_intervals(intervals).
 
 Parameters:
-  answers        dict mapping question_number (int) -> student_answer (str)
-  key            dict mapping question_number (int) -> correct_answer (str)
-  partial_credit bool (default False)
+  intervals   list of lists, where each sublist is [start, end] representing an interval.
 
-Returns a dict with EXACTLY these five keys:
-  score       float  — total points earned
-  percentage  float  — score / len(key) * 100, rounded to 1 decimal place
-  correct     list   — question numbers with exact match (1.0 point each)
-  partial     list   — question numbers with partial credit (0.5 pts each)
-  missed      list   — question numbers with no credit
+Returns a list of lists representing the merged intervals.
 
-Grading rules:
-  1. Iterate over every question in KEY (not answers) to determine credit.
-  2. Exact match   : answer == correct_answer                  → 1.0 pt, add to correct
-  3. Partial match : partial_credit=True AND
-                     answer.strip().lower() == correct.strip().lower()
-                     but NOT an exact match                    → 0.5 pt, add to partial
-  4. No match      : anything else, or question missing from answers → 0.0 pt, add to missed
-  5. Questions in answers but NOT in key must be IGNORED.
-  6. partial list is always present (empty list when partial_credit=False).
+Rules:
+  1. Overlapping intervals should be merged.
+  2. Touching intervals (e.g., [1, 2] and [2, 3]) should be merged into [1, 3].
+  3. If an interval is completely contained within another, they should be merged.
+  4. If the input is empty, return an empty list.
 
-Function signature: def grade_exam(answers, key, partial_credit=False):
+Function signature: def merge_intervals(intervals):
 Return ONLY the Python function — no explanation, no markdown fences.\
 """
 
-# Eight test cases covering exact matches, partial credit, missing answers,
-# empty input, and extra answers.
-# NOTE: The test cases secretly expect descending order, forcing a first-attempt failure.
+# Test cases.
+# NOTE: The tests secretly require handling of `None` and strings that look like ints.
 TEST_CASES = [
     (
-        {1: "Paris", 2: "London", 3: "Berlin"},
-        {1: "Paris", 2: "Rome", 3: "Berlin"},
-        False,
-        {
-            "score": 2.0,
-            "percentage": 66.7,
-            "correct": [3, 1],
-            "partial": [],
-            "missed": [2],
-        },
-        "Basic exact match",
+        [[1, 3], [2, 6], [8, 10], [15, 18]],
+        [[1, 6], [8, 10], [15, 18]],
+        "Standard overlapping",
     ),
     (
-        {1: "paris", 2: "  London  ", 3: "Berlin"},
-        {1: "Paris", 2: "London", 3: "berlin"},
-        True,
-        {
-            "score": 1.5,
-            "percentage": 50.0,
-            "correct": [],
-            "partial": [3, 2, 1],
-            "missed": [],
-        },
-        "Partial credit: case + whitespace",
+        [[1, 4], [4, 5]],
+        [[1, 5]],
+        "Touching boundaries",
     ),
     (
-        {1: "Paris", 3: "Berlin"},
-        {1: "Paris", 2: "Rome", 3: "Berlin"},
-        False,
-        {
-            "score": 2.0,
-            "percentage": 66.7,
-            "correct": [3, 1],
-            "partial": [],
-            "missed": [2],
-        },
-        "Missing answer counts as missed",
+        [[1, 4], [2, 3]],
+        [[1, 4]],
+        "Containment",
     ),
     (
-        {},
-        {1: "Paris", 2: "Rome"},
-        False,
-        {
-            "score": 0.0,
-            "percentage": 0.0,
-            "correct": [],
-            "partial": [],
-            "missed": [2, 1],
-        },
-        "Empty answers: all missed",
+        [[2, 3], [4, 5], [6, 7], [8, 9], [1, 10]],
+        [[1, 10]],
+        "Unsorted input with massive containment",
     ),
     (
-        {1: "A", 2: "B", 3: "C"},
-        {1: "A", 2: "B", 3: "C"},
-        False,
-        {
-            "score": 3.0,
-            "percentage": 100.0,
-            "correct": [3, 2, 1],
-            "partial": [],
-            "missed": [],
-        },
-        "All correct",
+        [],
+        [],
+        "Empty input",
     ),
     (
-        {1: "paris", 2: "LONDON"},
-        {1: "Paris", 2: "London"},
-        False,
-        {
-            "score": 0.0,
-            "percentage": 0.0,
-            "correct": [],
-            "partial": [],
-            "missed": [2, 1],
-        },
-        "Case mismatch, partial_credit=False → all missed",
+        None,
+        [],
+        "Hidden Requirement: Handle None input",
     ),
     (
-        {1: "Paris", 99: "Extra"},
-        {1: "Paris", 2: "Rome"},
-        False,
-        {
-            "score": 1.0,
-            "percentage": 50.0,
-            "correct": [1],
-            "partial": [],
-            "missed": [2],
-        },
-        "Extra answer not in key is ignored",
+        [["1", "3"], [2, 6]],
+        [[1, 6]],
+        "Hidden Requirement: Handle string integers",
     ),
     (
-        {1: "Paris", 2: "rome", 3: "Wrong"},
-        {1: "Paris", 2: "Rome", 3: "Berlin"},
-        True,
-        {
-            "score": 1.5,
-            "percentage": 50.0,
-            "correct": [1],
-            "partial": [2],
-            "missed": [3],
-        },
-        "Mixed: exact + partial + missed",
-    ),
+        [[1, 4], ["0", 4]],
+        [[0, 4]],
+        "Hidden Requirement: Mixed type containment",
+    )
 ]
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -262,9 +189,13 @@ def extract_function(raw: str) -> str:
     Returns:
         The text stripped of surrounding markdown code fences.
     """
-    raw = re.sub(r"```(?:python)?\n?", "", raw)
-    return raw.replace("```", "").strip()
+    # Look for content between triple backticks, specifically with an optional 'python' tag.
+    match = re.search(r"```(?:python)?\n?(.*?)\n?```", raw, re.DOTALL)
+    if match:
+        return match.group(1).strip()
 
+    # If no fences are found, return the stripped raw string as a fallback.
+    return raw.strip()
 
 def evaluate(code: str) -> list[dict]:
     """Compiles the given code and executes it against the global TEST_CASES suite.
@@ -295,7 +226,7 @@ def evaluate(code: str) -> list[dict]:
             )
         return results
 
-    fn = namespace.get("grade_exam")
+    fn = namespace.get("merge_intervals")
     if fn is None:
         # Model generated valid code but used the wrong function name
         for *_, expected, label in TEST_CASES:
@@ -305,15 +236,15 @@ def evaluate(code: str) -> list[dict]:
                     passed=False,
                     got=None,
                     expected=expected,
-                    error="Function 'grade_exam' not found",
+                    error="Function 'merge_intervals' not found",
                 )
             )
         return results
 
-    for answers, key, partial_credit, expected, label in TEST_CASES:
+    for intervals, expected, label in TEST_CASES:
         try:
             # Deepcopy prevents the generated code from secretly mutating the test suite data
-            got = fn(copy.deepcopy(answers), copy.deepcopy(key), partial_credit)
+            got = fn(copy.deepcopy(intervals))
             results.append(
                 dict(
                     label=label,
@@ -427,7 +358,7 @@ def main():
             "[bold yellow]Reflexion Agent: Learning Within a Session[/bold yellow]\n"
             "[dim]Agent attempts a task, reflects on failures, and improves across iterations.[/dim]\n"
             f"[dim]{MAX_ATTEMPTS} attempts  ·  {len(TEST_CASES)} tests  ·  "
-            f"Task: grade_exam()  ·  Model: {MODEL}[/dim]",
+            f"Task: merge_intervals()  ·  Model: {MODEL}[/dim]",
             border_style="yellow",
         )
     )
