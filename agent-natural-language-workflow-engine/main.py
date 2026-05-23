@@ -173,7 +173,12 @@ def main() -> None:
     elif args.example == "2":
         workflow_to_run = COMPLEX_WORKFLOW
     elif args.workflow:
-        workflow_to_run = args.workflow
+        # Check if the input is a file path
+        if os.path.isfile(args.workflow):
+            with open(args.workflow, "r") as f:
+                workflow_to_run = f.read().strip()
+        else:
+            workflow_to_run = args.workflow
 
     # start the event loop
     asyncio.run(run(workflow_to_run, use_temporal=args.temporal))
