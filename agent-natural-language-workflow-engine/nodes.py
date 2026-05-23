@@ -292,7 +292,7 @@ Execute the operation described above on the input data.
         )
 
     # stream the response chunks to keep the UI responsive
-    async for chunk in client.aio.models.generate_content_stream(
+    async for chunk in await client.aio.models.generate_content_stream(
         model=MODEL,
         contents=user_message,
         config=config,

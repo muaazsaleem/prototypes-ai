@@ -24,6 +24,17 @@ DEFAULT_WORKFLOW = (
     "Translate the digest to Spanish."
 )
 
+# A more complex workflow demonstrating Human-in-the-Loop (HITL) execution using Temporal,
+# along with parallel execution and external MCP calls.
+COMPLEX_WORKFLOW = (
+    "In parallel, use the Hacker News MCP to fetch the top 5 stories about 'AI Agents' "
+    "and use the GitHub MCP to fetch trending repositories related to 'Agents'. "
+    "Summarise all the fetched data into a single Markdown draft report. "
+    "Next, trigger a Human-in-the-Loop (HITL) approval step via Temporal to have a human review the draft. "
+    "Wait for the human approval to complete. "
+    "Finally, once approved, use the Slack MCP to publish the final report to the #engineering channel."
+)
+
 console = Console()
 
 
@@ -103,14 +114,28 @@ def main() -> None:
         description="Run a natural-language workflow through the engine."
     )
     parser.add_argument(
+        "--example",
+        choices=["1", "2"],
+        help="Run a built-in example workflow (1=default, 2=complex HITL).",
+    )
+    parser.add_argument(
         "workflow",
         nargs="?",
-        default=DEFAULT_WORKFLOW,
         help="Plain-English description of the workflow to execute.",
     )
     args = parser.parse_args()
+
+    # Determine which workflow to run
+    workflow_to_run = DEFAULT_WORKFLOW
+    if args.example == "1":
+        workflow_to_run = DEFAULT_WORKFLOW
+    elif args.example == "2":
+        workflow_to_run = COMPLEX_WORKFLOW
+    elif args.workflow:
+        workflow_to_run = args.workflow
+
     # start the event loop
-    asyncio.run(run(args.workflow))
+    asyncio.run(run(workflow_to_run))
 
 
 if __name__ == "__main__":

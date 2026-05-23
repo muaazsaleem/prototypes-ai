@@ -1,4 +1,5 @@
 import os
+from typing import Any
 
 from google import genai
 from google.genai import types
@@ -50,6 +51,21 @@ fetch_weather and fetch_news have no dependency on each other → they run in pa
 """
 
 
+def _strip_additional_properties(schema: dict | list | Any) -> None:
+    """Recursively removes 'additionalProperties' from a JSON schema.
+
+    Gemini's SDK currently throws a ValueError if this key is present,
+    even though Pydantic 2.x includes it by default for dict fields.
+    """
+    if isinstance(schema, dict):
+        schema.pop("additionalProperties", None)
+        for value in schema.values():
+            _strip_additional_properties(value)
+    elif isinstance(schema, list):
+        for item in schema:
+            _strip_additional_properties(item)
+
+
 def parse_workflow(description: str, client: genai.Client) -> tuple[Workflow, str]:
     """Parses a natural language description into a structured Workflow DAG.
 
@@ -57,6 +73,11 @@ def parse_workflow(description: str, client: genai.Client) -> tuple[Workflow, st
     exactly to the Workflow Pydantic model. Sets a low temperature for
     deterministic structure generation. Returns a tuple of (Workflow, raw_json).
     """
+    # Gemini's SDK can be picky about certain JSON Schema keywords.
+    # We generate the schema from Pydantic and then strip unsupported keys.
+    schema = Workflow.model_json_schema()
+    _strip_additional_properties(schema)
+
     # use structured-output mode to avoid manual parsing or regex
     response = client.models.generate_content(
         model=MODEL,
@@ -65,7 +86,7 @@ def parse_workflow(description: str, client: genai.Client) -> tuple[Workflow, st
             system_instruction=PARSER_SYSTEM_PROMPT,
             # enforce JSON schema matching the Pydantic model
             response_mime_type="application/json",
-            response_schema=Workflow,
+            response_schema=schema,
             temperature=0.1,
         ),
     )
