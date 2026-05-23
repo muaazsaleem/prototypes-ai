@@ -64,7 +64,7 @@ async def _run_node_buffered(
     user_message = None
 
     # For LLM nodes, we reconstruct the user message for display purposes.
-    if node.type not in (NodeType.FETCH, NodeType.EMAIL):
+    if node.type not in (NodeType.FETCH, NodeType.EMAIL, NodeType.TEMPORAL_HITL):
         input_block = (
             "\n\n".join(
                 f"### Input from [{dep}]\n{text}" for dep, text in inputs.items()

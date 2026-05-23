@@ -24,6 +24,7 @@ Rules for building the DAG
    - fetch  → url (if given) or data_source (e.g. "hacker_news", "github_trending")
    - translate → target_language
    - email   → recipient (use "user" if not specified)
+   - temporal_hitl → workflow_name, timeout_minutes
    - others  → any relevant key/value pairs
 
 Node types and when to use them
@@ -35,6 +36,7 @@ Node types and when to use them
 - transform : reshape or reformat data without changing its language
 - filter    : keep only items matching certain criteria
 - aggregate : merge outputs from multiple upstream nodes into one
+- temporal_hitl : trigger a human-in-the-loop approval or review step via Temporal
 
 Parallelism example
 -------------------

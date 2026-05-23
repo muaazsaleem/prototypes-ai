@@ -14,6 +14,7 @@ class NodeType(str, Enum):
     TRANSFORM = "transform"
     FILTER = "filter"
     AGGREGATE = "aggregate"
+    TEMPORAL_HITL = "temporal_hitl"
 
 
 class WorkflowNode(BaseModel):

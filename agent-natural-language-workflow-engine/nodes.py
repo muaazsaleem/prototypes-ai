@@ -116,10 +116,48 @@ async def run_node(
     elif node.type == NodeType.EMAIL:
         async for chunk in _run_email(node, inputs):
             yield chunk
+    elif node.type == NodeType.TEMPORAL_HITL:
+        async for chunk in _run_temporal_hitl(node, inputs):
+            yield chunk
     else:
         # summarize / translate / transform / filter / aggregate → Gemini
         async for chunk in _run_llm(node, inputs, client, cache_manager):
             yield chunk
+
+
+# ---------------------------------------------------------------------------
+# Temporal HITL node — human-in-the-loop approval
+# ---------------------------------------------------------------------------
+
+
+async def _run_temporal_hitl(
+    node: WorkflowNode, inputs: dict[str, str]
+) -> AsyncGenerator[str, None]:
+    """Simulates a Temporal Human-in-the-Loop workflow.
+
+    In a production system, this would use the Temporal Python SDK to
+    start a workflow and wait for an external signal (e.g., from a UI).
+    For this prototype, it provides a CLI-based simulation.
+    """
+    workflow_name = node.params.get("workflow_name", "approval-workflow")
+    timeout = node.params.get("timeout_minutes", 5)
+
+    yield f"⏳ **[Temporal HITL]** Triggering workflow: `{workflow_name}`\n"
+    yield f"⏳ Waiting for human review (timeout: {timeout}m) ...\n\n"
+
+    # In reality, this would be:
+    # client = await Client.connect("localhost:7233")
+    # handle = await client.start_workflow(ApprovalWorkflow.run, ...)
+    # await handle.result()
+
+    # Simulation: show the draft to the "human" (the CLI user)
+    content = "\n\n".join(inputs.values())
+    yield "--- DRAFT CONTENT FOR REVIEW ---\n"
+    yield content
+    yield "\n--------------------------------\n\n"
+
+    yield "✅ **[Simulated Approval]** Human reviewed the draft and clicked 'Approve'.\n"
+    yield "🚀 Proceeding to the next step..."
 
 
 # ---------------------------------------------------------------------------

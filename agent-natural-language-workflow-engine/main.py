@@ -56,7 +56,7 @@ def _print_dag(workflow) -> None:
         console.print(f"  [bold]{node.id}[/bold] [dim]({node.type.value})[/dim]{deps}")
 
 
-async def run(workflow_description: str) -> None:
+async def run(workflow_description: str, use_temporal: bool = False) -> None:
     """Orchestrates the full lifecycle of a natural language workflow.
 
     Parses the English description into a DAG, sets up tracing and caching,
@@ -90,22 +90,58 @@ async def run(workflow_description: str) -> None:
     _print_dag(workflow)
 
     # ── Step 2: Execute the DAG ──────────────────────────────────────────────
-    console.print(Rule("[bold cyan]Executing[/bold cyan]"))
+    if use_temporal:
+        console.print(Rule("[bold magenta]Executing via Temporal[/bold magenta]"))
+        console.print("[yellow]Note: This requires a running Temporal server and worker.[/yellow]")
+        console.print("[dim]Connecting to Temporal...[/dim]")
+        
+        try:
+            from temporalio.client import Client as TemporalClient
+            from temporal_executor import NaturalLanguageWorkflow
+            
+            # Connect to local Temporal server
+            temporal_client = await TemporalClient.connect("localhost:7233")
+            
+            # Start the workflow
+            handle = await temporal_client.start_workflow(
+                NaturalLanguageWorkflow.run,
+                workflow.model_dump(),
+                id=f"workflow-{workflow.name.replace(' ', '-').lower()}",
+                task_queue="nl-workflow-queue",
+            )
+            
+            console.print(f"[bold green]✔ Temporal Workflow Started![/bold green] ID: {handle.id}")
+            console.print("[dim]Waiting for result...[/dim]")
+            
+            results = await handle.result()
+            
+            console.print(Rule("[bold cyan]Temporal Results[/bold cyan]"))
+            for node_id, output in results.items():
+                console.print(f"\n[bold green]✔ {node_id}[/bold green]")
+                console.print(output)
+                
+        except Exception as e:
+            console.print(f"[bold red]Temporal Execution Failed:[/bold red] {e}")
+            console.print("[dim]Ensure Temporal is running: `temporal server start-dev`[/dim]")
+            return
+    else:
+        console.print(Rule("[bold cyan]Executing Locally[/bold cyan]"))
 
-    results = await execute_workflow(
-        workflow,
-        tracer,
-        client,
-        cache_manager,
-        # pass the rich console's print method for styled executor output
-        print_fn=console.print,
-    )
+        results = await execute_workflow(
+            workflow,
+            tracer,
+            client,
+            cache_manager,
+            # pass the rich console's print method for styled executor output
+            print_fn=console.print,
+        )
 
     console.print(Rule("[bold cyan]Done[/bold cyan]"))
-    console.print(
-        f"[dim]Completed {len(results)} nodes. "
-        "OpenTelemetry spans printed above (look for the JSON blocks).[/dim]"
-    )
+    if not use_temporal:
+        console.print(
+            f"[dim]Completed {len(results)} nodes. "
+            "OpenTelemetry spans printed above (look for the JSON blocks).[/dim]"
+        )
 
 
 def main() -> None:
@@ -117,6 +153,11 @@ def main() -> None:
         "--example",
         choices=["1", "2"],
         help="Run a built-in example workflow (1=default, 2=complex HITL).",
+    )
+    parser.add_argument(
+        "--temporal",
+        action="store_true",
+        help="Execute the workflow using Temporal instead of the local async executor.",
     )
     parser.add_argument(
         "workflow",
@@ -135,7 +176,7 @@ def main() -> None:
         workflow_to_run = args.workflow
 
     # start the event loop
-    asyncio.run(run(workflow_to_run))
+    asyncio.run(run(workflow_to_run, use_temporal=args.temporal))
 
 
 if __name__ == "__main__":
