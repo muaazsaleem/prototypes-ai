@@ -7,6 +7,7 @@ from rich.console import Group
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.text import Text
+from rich.markup import escape
 
 from cache import PromptCacheManager
 from google import genai
@@ -136,7 +137,7 @@ def print_llm_io(
     print_fn(
         Panel(
             Group(*input_elements),
-            title=f"[bold bright_black]Model Input ({node_id})[/bold bright_black]",
+            title=f"[bold bright_black]Model Input ({escape(node_id)})[/bold bright_black]",
             border_style="bright_black",
             padding=(1, 2),
         )
@@ -153,7 +154,7 @@ def print_llm_io(
     print_fn(
         Panel(
             response_content,
-            title=f"[bold bright_black]Model Response ({node_id})[/bold bright_black]",
+            title=f"[bold bright_black]Model Response ({escape(node_id)})[/bold bright_black]",
             border_style="bright_black",
             padding=(1, 2),
             highlight=False,
@@ -190,11 +191,11 @@ async def execute_workflow(
             if len(wave) > 1:
                 print_fn(
                     f"\n[bold yellow]⚡ Wave {wave_idx} — "
-                    f"running {len(wave)} nodes in parallel: {node_ids}[/bold yellow]"
+                    f"running {len(wave)} nodes in parallel: {escape(str(node_ids))}[/bold yellow]"
                 )
             else:
                 print_fn(
-                    f"\n[bold yellow]▸ Wave {wave_idx} — {node_ids[0]}[/bold yellow]"
+                    f"\n[bold yellow]▸ Wave {wave_idx} — {escape(node_ids[0])}[/bold yellow]"
                 )
 
             # fire all nodes in the current wave simultaneously
@@ -219,10 +220,10 @@ async def execute_workflow(
                 else:
                     # standard output for non-LLM nodes
                     print_fn(
-                        f"\n[bold green]✔ {node_id}[/bold green] "
-                        f"[dim]({node.type.value})[/dim]\n"
+                        f"\n[bold green]✔ {escape(node_id)}[/bold green] "
+                        f"[dim]({escape(node.type.value)})[/dim]\n"
                     )
-                    print_fn(output)
+                    print_fn(Text(output))
 
                 results[node_id] = output
 

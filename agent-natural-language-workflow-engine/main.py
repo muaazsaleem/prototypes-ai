@@ -6,6 +6,8 @@ import sys
 from google import genai
 from rich.console import Console
 from rich.rule import Rule
+from rich.markup import escape
+from rich.text import Text
 
 from cache import PromptCacheManager
 from executor import execute_workflow, print_llm_io
@@ -44,8 +46,8 @@ def _print_dag(workflow) -> None:
     Iterates through the nodes in the workflow and displays their IDs, types,
     and dependency relationships using Rich formatting.
     """
-    console.print(f"\n[bold cyan]Workflow:[/bold cyan] {workflow.name}")
-    console.print(f"[dim]{workflow.description}[/dim]\n")
+    console.print(f"\n[bold cyan]Workflow:[/bold cyan] {escape(workflow.name)}")
+    console.print(f"[dim]{escape(workflow.description)}[/dim]\n")
     for node in workflow.nodes:
         # format dependency labels for readability
         deps = (
@@ -53,7 +55,7 @@ def _print_dag(workflow) -> None:
             if node.depends_on
             else "  ← (no dependencies, runs immediately)"
         )
-        console.print(f"  [bold]{node.id}[/bold] [dim]({node.type.value})[/dim]{deps}")
+        console.print(f"  [bold]{escape(node.id)}[/bold] [dim]({escape(node.type.value)})[/dim]{escape(deps)}")
 
 
 async def run(workflow_description: str, use_temporal: bool = False) -> None:
@@ -73,7 +75,7 @@ async def run(workflow_description: str, use_temporal: bool = False) -> None:
 
     # ── Step 1: Parse natural language → DAG ────────────────────────────────
     console.print(Rule("[bold cyan]Natural Language Workflow Engine[/bold cyan]"))
-    console.print(f"\n[bold]Input:[/bold]\n{workflow_description}\n")
+    console.print(f"\n[bold]Input:[/bold]\n{escape(workflow_description)}\n")
     console.print("[dim]Parsing workflow into DAG …[/dim]")
 
     workflow, raw_response = parse_workflow(workflow_description, client)
@@ -110,18 +112,18 @@ async def run(workflow_description: str, use_temporal: bool = False) -> None:
                 task_queue="nl-workflow-queue",
             )
             
-            console.print(f"[bold green]✔ Temporal Workflow Started![/bold green] ID: {handle.id}")
+            console.print(f"[bold green]✔ Temporal Workflow Started![/bold green] ID: {escape(handle.id)}")
             console.print("[dim]Waiting for result...[/dim]")
             
             results = await handle.result()
             
             console.print(Rule("[bold cyan]Temporal Results[/bold cyan]"))
             for node_id, output in results.items():
-                console.print(f"\n[bold green]✔ {node_id}[/bold green]")
-                console.print(output)
+                console.print(f"\n[bold green]✔ {escape(node_id)}[/bold green]")
+                console.print(Text(output))
                 
         except Exception as e:
-            console.print(f"[bold red]Temporal Execution Failed:[/bold red] {e}")
+            console.print(f"[bold red]Temporal Execution Failed:[/bold red] {escape(str(e))}")
             console.print("[dim]Ensure Temporal is running: `temporal server start-dev`[/dim]")
             return
     else:
