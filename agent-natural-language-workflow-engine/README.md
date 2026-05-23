@@ -1,51 +1,78 @@
-# Natural Language Workflow Engine
+# Agent Natural Language Workflow Engine
 
-Describe a multi-step data pipeline in plain English and the engine turns it into an executable DAG.
+A prototype engine that compiles plain-English descriptions into structured, observable, and durable execution DAGs.
 
-```
-"Fetch top 10 HN posts and top 5 GitHub repos.
- Summarise both. Combine into a tech digest. Translate to Spanish."
-```
+## How it Works
 
-The parser converts that sentence into a DAG of typed nodes. Independent nodes run in parallel via `asyncio.gather`. Each node streams its output back as it produces tokens. Every node execution is wrapped in an OpenTelemetry span so you can see per-node latency. All LLM nodes share a single cached Gemini system prompt (context caching) to avoid uploading the same large instruction set on every call.
+The engine operates in three distinct phases:
 
-## Architecture
+### 1. Parsing (The Compiler)
+Using Gemini's structured output capability, the engine parses a natural language description into a **Directed Acyclic Graph (DAG)**. It identifies:
+- **Nodes**: Individual operations (Fetch, Summarize, Translate, etc.).
+- **Dependencies**: Data flow requirements between nodes.
+- **Parallelism**: Steps that can run concurrently are automatically identified (those with no shared dependencies).
 
-```
-main.py
- └─ parser.py        NL description → Workflow DAG  (Gemini structured output)
- └─ executor.py      Topological sort → waves → asyncio.gather per wave
-     └─ nodes.py     Per-node runners: fetch / LLM (summarize/translate/…) / email
-     └─ cache.py     Gemini context-cache manager  (shared system prompt)
-     └─ tracing.py   OpenTelemetry setup  (console exporter)
-```
+### 2. Planning (Wave Generation)
+The engine topologically sorts the DAG into **Execution Waves**. Nodes in the same wave have their dependencies satisfied and are executed in parallel using `asyncio.gather`.
 
-## Setup
+### 3. Execution (The Runner)
+The engine supports two execution modes:
+- **Local Async**: A fast, in-memory executor for prototyping.
+- **Temporal Orchestration**: A durable, reliable executor that maps nodes to Temporal Activities and manages long-running processes like Human-in-the-Loop (HITL) approvals.
+
+## Key Features
+
+- **Parallel by Default**: Automatically detects and runs independent tasks concurrently.
+- **Human-in-the-Loop (HITL)**: Support for `temporal_hitl` nodes that pause execution for human review and approval.
+- **Durable Workflows**: Integration with Temporal for reliable execution, retries, and state persistence.
+- **Observability**: Built-in OpenTelemetry tracing that emits spans for every node execution.
+- **Context Caching**: Uses Gemini's context caching to minimize latency and token usage across multi-step LLM calls.
+
+## Installation
 
 ```bash
-python -m venv venv
-source venv/bin/activate
 pip install -r requirements.txt
-
-export GEMINI_API_KEY="your-key-here"
 ```
 
-## Run
-
+Set your API key:
 ```bash
-# Default demo workflow (HN + GitHub → summarise → combine → translate to Spanish)
-python main.py
-
-# Custom workflow
-python main.py "Fetch the BBC tech RSS feed, filter posts from the last 24 hours, summarise them, email to me@example.com"
+export GEMINI_API_KEY="your-api-key"
 ```
 
-## Key concepts shown
+## Usage
 
-| Concept | Where |
-|---|---|
-| Structured output / constrained generation | `parser.py` — `response_schema=Workflow` |
-| DAG + parallel execution | `executor.py` — `_build_execution_waves` + `asyncio.gather` |
-| Streaming LLM output | `nodes.py` — `_run_llm` async generator |
-| Gemini context caching | `cache.py` — `PromptCacheManager` |
-| OpenTelemetry tracing | `tracing.py` + spans in `executor.py` |
+### Running a Built-in Example
+```bash
+# Run the default Hacker News / GitHub digest
+python main.py --example 1
+
+# Run the complex Human-in-the-Loop workflow
+python main.py --example 2
+```
+
+### Running from a Text File
+You can write your workflow in plain English in a text file and run it directly:
+```bash
+python main.py workflow_complex_hitl.txt
+```
+
+### Running via Temporal
+To use the durable Temporal executor (requires a running [Temporal Server](https://docs.temporal.io/cli/#server)):
+```bash
+# Start a worker in one terminal (optional implementation placeholder)
+# python temporal_executor.py
+
+# Run the workflow via Temporal
+python main.py --example 2 --temporal
+```
+
+## Project Structure
+
+- `main.py`: CLI entry point and orchestration.
+- `parser.py`: NL to DAG compilation logic using Gemini.
+- `executor.py`: Local wave-based async executor.
+- `temporal_executor.py`: Temporal Workflow and Activity definitions.
+- `nodes.py`: Implementation of individual node operations (LLM, Fetch, etc.).
+- `models.py`: Pydantic models defining the Workflow and Node schema.
+- `tracing.py`: OpenTelemetry setup for observability.
+- `cache.py`: Gemini context cache management.
