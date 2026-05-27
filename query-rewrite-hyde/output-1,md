@@ -1,0 +1,58 @@
+╭─────────────────────────────────────────────────────────────────────────────╮
+│ HyDE Query Rewrite: The Rank Flip Demo                                      │
+│ Proving that query rewriting can change the result order to find the truth. │
+╰─────────────────────────────────────────────────────────────────────────────╯
+
+Step 1: Indexing Knowledge Base...
+  Indexed DOC-ALGAE
+  Indexed DOC-CITY-FOREST
+  Indexed DOC-CARBON-MECH
+  Indexed DOC-CRYPT
+  Indexed DOC-SOLAR
+
+───────────────────────────────────────────────────────────────────────────────────── The Problem: Metaphorical User Query ──────────────────────────────────────────────────────────────────────────────────────
+
+> USER INPUT
+  'How do 'liquid trees' work to clean the smog in our city streets?'
+
+Challenge: This query shares 5 keywords with the Forestry doc ('trees', 'clean', 'smog', 'city', 'streets').
+The target doc (Algae) shares ZERO keywords with this query.
+
+-- Strategy A: Standard Search (Raw Metaphor) -----------------------
+-- Strategy B: HyDE Search (Intelligent Bridge) --------------------
+╭───────────────────────────────────────────────────────────────────────────────────────────── The Semantic Bridge ─────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                                                                                                               │
+│  USER METAPHOR: 'How do 'liquid trees' work to clean the smog in our city streets?'                                                                                                                           │
+│                                                                                                                                                                                                               │
+│  LLM DECODED REWRITE:                                                                                                                                                                                         │
+│  The photobioreactor system utilizes high-density micro-algae (Spirulina) cultures to perform biological carbon sequestration. By utilizing photosynthesis, these bioreactors filter CO2 from the atmosphere  │
+│  more efficiently than traditional trees.                                                                                                                                                                     │
+│                                                                                                                                                                                                               │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+───────────────────────────────────────────────────────────────────────── Final Comparison: Did we find the Algae document (DOC-ALGAE)? ─────────────────────────────────────────────────────────────────────────
+
+                                                      Search Rank Comparison                                                      
+┏━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Rank ┃ Standard Search (Keyword Overlap)                          ┃ HyDE Search (Decoded Metaphor)                             ┃
+┡━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│  1   │ DOC-CITY-FOREST (Score: 0.7550)                            │ DOC-ALGAE (Score: 0.9022)                                  │
+│      │ The Urban Streets Initiative installs deciduous trees t... │ Project Chloris implements high-density photobioreactor... │
+├──────┼────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────┤
+│  2   │ DOC-ALGAE (Score: 0.6958)                                  │ DOC-CARBON-MECH (Score: 0.8101)                            │
+│      │ Project Chloris implements high-density photobioreactor... │ The Aeolus turbine series utilizes industrial-scale ami... │
+├──────┼────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────┤
+│  3   │ DOC-CARBON-MECH (Score: 0.6875)                            │ DOC-SOLAR (Score: 0.7507)                                  │
+│      │ The Aeolus turbine series utilizes industrial-scale ami... │ The Icarus system employs bifacial photovoltaic arrays ... │
+├──────┼────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────┤
+│  4   │ DOC-SOLAR (Score: 0.6035)                                  │ DOC-CITY-FOREST (Score: 0.6898)                            │
+│      │ The Icarus system employs bifacial photovoltaic arrays ... │ The Urban Streets Initiative installs deciduous trees t... │
+├──────┼────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────┤
+│  5   │ DOC-CRYPT (Score: 0.5542)                                  │ DOC-CRYPT (Score: 0.6772)                                  │
+│      │ The Obsidian Protocol utilizes zero-knowledge proofs an... │ The Obsidian Protocol utilizes zero-knowledge proofs an... │
+└──────┴────────────────────────────────────────────────────────────┴────────────────────────────────────────────────────────────┘
+
+Analysis:
+Standard Search Result: WRONG (Ranked DOC-CITY-FOREST #1 due to keyword overlap)
+HyDE Search Result:     CORRECT (Ranked DOC-ALGAE #1 by decoding the intent)
+
+SUCCESS: HyDE successfully corrected the rank order and found the intended document!
