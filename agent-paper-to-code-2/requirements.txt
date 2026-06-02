@@ -1,0 +1,4 @@
+google-genai
+pypdf
+pytest
+rich
