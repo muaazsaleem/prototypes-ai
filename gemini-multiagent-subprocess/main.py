@@ -30,7 +30,7 @@ from pathlib import Path
 
 from google import genai
 from google.genai import types
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
@@ -77,12 +77,15 @@ class AgentHandle:
 # ── Gemini helper ──────────────────────────────────────────────────────────────
 
 def call_gemini(client: genai.Client, prompt: str) -> str:
-    response = client.models.generate_content(
-        model=MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(max_output_tokens=1200),
-    )
-    return response.text.strip()
+    try:
+        response = client.models.generate_content(
+            model=MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(max_output_tokens=2048),
+        )
+        return response.text.strip()
+    except Exception as e:
+        return f"Error calling Gemini: {e}"
 
 
 # ── Phase 1: Planning ──────────────────────────────────────────────────────────
@@ -90,8 +93,8 @@ def call_gemini(client: genai.Client, prompt: str) -> str:
 # An agent SDK would call this "task decomposition" and hide it behind a graph node.
 
 def plan_subtasks(client: genai.Client, topic: str) -> list[str]:
-    console.print(Rule("[bold cyan]Phase 1 — Planning (Orchestrator)[/bold cyan]",
-                       style="cyan"))
+    console.print(Rule("[bold]Phase 1 — Planning (Orchestrator)[/bold]", style="white"))
+    console.print()
 
     prompt = (
         f"You are a research planner. Break this topic into exactly 3 focused, "
@@ -101,25 +104,66 @@ def plan_subtasks(client: genai.Client, topic: str) -> list[str]:
         f"research question or directive. No extra text, just the JSON array."
     )
 
-    console.print(Panel(
-        Text.assemble(("USER: ", "bold blue"), (prompt, "blue")),
-        title="[bright_black]Orchestrator → Gemini (planning)[/bright_black]",
-        border_style="bright_black", padding=(1, 2),
-    ))
+    # Indent content after the persona label
+    messages = [{"role": "user", "content": prompt}]
+    input_elements = []
+    for msg in messages:
+        role = msg["role"]
+        content = msg["content"]
+        label_style = "bold blue"
+        content_style = "blue"
+        indent = " " * (len(role) + 2)
+        wrapped = textwrap.fill(content, width=82, subsequent_indent=indent)
+        input_elements.append(Text.assemble((f"{role.upper()}: ", label_style), (wrapped, content_style)))
+
+    console.print(
+        Panel(
+            Group(*input_elements),
+            title="[bold bright_black]Model Input[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+        )
+    )
+    console.print()
 
     raw = call_gemini(client, prompt)
 
-    console.print(Panel(
-        Text.assemble(("ASSISTANT: ", "bold green"), (raw, "italic")),
-        title="[bright_black]Gemini → Orchestrator[/bright_black]",
-        border_style="bright_black", padding=(1, 2),
-    ))
+    wrapped_response = textwrap.fill(raw, width=82, subsequent_indent="           ")
+    response_content = Text.assemble(
+        ("ASSISTANT: ", "bold green"),
+        (wrapped_response, "italic")
+    )
+
+    console.print(
+        Panel(
+            response_content,
+            title="[bold bright_black]Model Response[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+            highlight=False,
+        )
+    )
+    console.print()
 
     # Strip markdown fences if Gemini wrapped the JSON
-    clean = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    subtasks: list[str] = json.loads(clean)
-    assert len(subtasks) == 3, f"Expected 3 subtasks, got {len(subtasks)}"
-    return subtasks
+    clean = raw.strip()
+    if clean.startswith("```"):
+        # Find the first [ and last ]
+        start = clean.find("[")
+        end = clean.rfind("]")
+        if start != -1 and end != -1:
+            clean = clean[start:end+1]
+
+    try:
+        subtasks: list[str] = json.loads(clean)
+    except json.JSONDecodeError:
+        # Fallback for common truncation or extra text
+        import re
+        matches = re.findall(r'"(.*?)"', clean)
+        subtasks = matches[:3]
+
+    assert len(subtasks) >= 3, f"Expected 3 subtasks, got {len(subtasks)}"
+    return subtasks[:3]
 
 
 # ── Phase 2: Spawning sub-agents ───────────────────────────────────────────────
@@ -130,8 +174,8 @@ def plan_subtasks(client: genai.Client, topic: str) -> list[str]:
 #   - closing stdin so the child knows input is complete
 
 def spawn_agents(subtasks: list[str]) -> list[AgentHandle]:
-    console.print(Rule("[bold cyan]Phase 2 — Spawning Sub-Agents[/bold cyan]",
-                       style="cyan"))
+    console.print(Rule("[bold]Phase 2 — Spawning Sub-Agents[/bold]", style="white"))
+    console.print()
 
     handles: list[AgentHandle] = []
 
@@ -175,8 +219,9 @@ def spawn_agents(subtasks: list[str]) -> list[AgentHandle]:
 #   - handle partial failures gracefully so the pipeline continues
 
 def wait_for_all_agents(handles: list[AgentHandle]) -> None:
-    console.print(Rule("[bold cyan]Phase 3 — Tracking Sub-Agent Lifecycle[/bold cyan]",
-                       style="cyan"))
+    console.print()
+    console.print(Rule("[bold]Phase 3 — Tracking Sub-Agent Lifecycle[/bold]", style="white"))
+    console.print()
 
     console.print(
         "[dim]Polling every "
@@ -255,38 +300,67 @@ def wait_for_all_agents(handles: list[AgentHandle]) -> None:
 
 def synthesise(client: genai.Client, topic: str,
                handles: list[AgentHandle]) -> str:
-    console.print(Rule("[bold cyan]Phase 4 — Synthesis (Orchestrator)[/bold cyan]",
-                       style="cyan"))
+    console.print(Rule("[bold]Phase 4 — Synthesis (Orchestrator)[/bold]", style="white"))
+    console.print()
 
     research_block = ""
     for h in handles:
         if h.status == AgentStatus.DONE:
-            research_block += f"\n### {h.agent_id}: {h.task}\n{h.result}\n"
+            research_block += f"\n### RESEARCH TASK: {h.task}\n### FINDINGS: {h.result}\n"
         else:
-            research_block += f"\n### {h.agent_id}: {h.task}\n[FAILED — {h.error}]\n"
+            research_block += f"\n### RESEARCH TASK: {h.task}\n### FINDINGS: [FAILED — {h.error}]\n"
 
     prompt = (
         f"You are a senior technical writer. Synthesize the following parallel "
-        f"research findings into a single coherent summary on:\n\n"
-        f"Topic: {topic}\n\n"
-        f"Research findings:\n{research_block}\n\n"
-        f"Write 3-4 tight paragraphs. Do not use section headers."
+        f"research findings into a comprehensive and coherent summary on the topic: {topic}\n\n"
+        f"Research findings from different specialists:\n{research_block}\n\n"
+        f"INSTRUCTIONS:\n"
+        f"1. Write 3-4 professional and insightful paragraphs.\n"
+        f"2. Do not use section headers or bullet points.\n"
+        f"3. Integrate all findings smoothly into a single narrative.\n"
+        f"4. Focus on the transformation of software engineering by 2025."
     )
 
-    console.print(Panel(
-        Text.assemble(("USER: ", "bold blue"),
-                      (textwrap.fill(prompt, 80), "blue")),
-        title="[bright_black]Orchestrator → Gemini (synthesis)[/bright_black]",
-        border_style="bright_black", padding=(1, 2),
-    ))
+    # Indent content after the persona label
+    messages = [{"role": "user", "content": prompt}]
+    input_elements = []
+    for msg in messages:
+        role = msg["role"]
+        content = msg["content"]
+        label_style = "bold blue"
+        content_style = "blue"
+        indent = " " * (len(role) + 2)
+        wrapped = textwrap.fill(content, width=82, subsequent_indent=indent)
+        input_elements.append(Text.assemble((f"{role.upper()}: ", label_style), (wrapped, content_style)))
+
+    console.print(
+        Panel(
+            Group(*input_elements),
+            title="[bold bright_black]Model Input[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+        )
+    )
+    console.print()
 
     result = call_gemini(client, prompt)
 
-    console.print(Panel(
-        Text.assemble(("ASSISTANT: ", "bold green"), (result, "italic")),
-        title="[bright_black]Gemini → Orchestrator (final)[/bright_black]",
-        border_style="bright_black", padding=(1, 2),
-    ))
+    wrapped_response = textwrap.fill(result, width=82, subsequent_indent="           ")
+    response_content = Text.assemble(
+        ("ASSISTANT: ", "bold green"),
+        (wrapped_response, "italic")
+    )
+
+    console.print(
+        Panel(
+            response_content,
+            title="[bold bright_black]Model Response[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+            highlight=False,
+        )
+    )
+    console.print()
 
     return result
 
@@ -294,7 +368,7 @@ def synthesise(client: genai.Client, topic: str,
 # ── Status dashboard ───────────────────────────────────────────────────────────
 
 def print_status_table(handles: list[AgentHandle]) -> None:
-    table = Table(title="Sub-Agent Completion Summary", show_lines=True)
+    table = Table(title="Results", show_lines=True)
     table.add_column("Agent",  style="bold")
     table.add_column("Status", justify="center")
     table.add_column("Result / Error", max_width=60)
@@ -322,18 +396,14 @@ def print_status_table(handles: list[AgentHandle]) -> None:
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    console.print(Panel.fit(
-        "[bold yellow]Gemini Multi-Agent — Raw subprocess edition[/bold yellow]\n"
-        "[dim]No framework. Every abstraction shown explicitly.[/dim]\n"
-        f'[dim]Topic: "{TOPIC}"[/dim]\n\n'
-        "[dim]What you'll see that SDKs hide:\n"
-        "  • subprocess.Popen()  — spawning agents\n"
-        "  • stdin/stdout JSON   — inter-agent messaging\n"
-        "  • process.poll()      — lifecycle tracking\n"
-        "  • timeout + kill()    — failure handling\n"
-        "  • manual aggregation  — collecting results[/dim]",
-        border_style="yellow",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold yellow]Gemini Multi-Agent — Raw subprocess edition[/bold yellow]\n"
+            "[dim]No framework. Every abstraction shown explicitly.[/dim]\n"
+            f'[dim]Topic: "{TOPIC}"[/dim]',
+            border_style="yellow",
+        )
+    )
     console.print()
 
     try:
@@ -346,11 +416,9 @@ def main() -> None:
     subtasks = plan_subtasks(client, TOPIC)
 
     # Phase 2 — spawn one subprocess per subtask
-    console.print()
     handles = spawn_agents(subtasks)
 
     # Phase 3 — wait for all agents; track lifecycle manually
-    console.print()
     wait_for_all_agents(handles)
 
     # Status table
@@ -359,7 +427,8 @@ def main() -> None:
     # Phase 4 — synthesize
     final = synthesise(client, TOPIC, handles)
 
-    console.print(Rule("[bold green]Final Report[/bold green]", style="green"))
+    console.print(Rule("[bold yellow]Overall Summary[/bold yellow]", style="yellow"))
+    console.print()
     for para in final.split("\n\n"):
         console.print(textwrap.fill(para.strip(), width=88))
         console.print()

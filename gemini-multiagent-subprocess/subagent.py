@@ -57,7 +57,7 @@ def main() -> None:
             model="gemini-2.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
-                max_output_tokens=400,
+                max_output_tokens=800,
             ),
         )
 
