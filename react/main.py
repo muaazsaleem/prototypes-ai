@@ -33,7 +33,7 @@ console = Console()
 # ── Gemini setup ─────────────────────────────────────────────────────────────
 
 CLIENT = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-MODEL_ID = "gemini-2.0-flash"
+MODEL_ID = "gemini-2.5-flash"
 
 # ── Step budget ───────────────────────────────────────────────────────────────
 

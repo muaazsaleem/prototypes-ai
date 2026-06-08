@@ -1,0 +1,16 @@
+--- buggy_app.py
++++ buggy_app.py
+@@ -31,9 +31,10 @@
+ 
+ def process_items(items):
+     processed = []
+-    for i in range(len(items)):
++    for i in range(len(items)): # Iterate using index
+         # Bug 7: Potential TypeError if item is not a number
+         # Bug 8: Unused variable 'temp'
+-        temp = items[i] * 2
+-        processed.append(str(temp) + "2")
++        if isinstance(items[i], (int, float)): # Ensure item is numeric before processing
++            temp = items[i] * 2
++            processed.append(str(temp) + "2")
+ 
