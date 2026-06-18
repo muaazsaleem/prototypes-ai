@@ -561,9 +561,7 @@ def main() -> None:
 
     # ── Task 1: Requires all three tools in sequence ──────────────────────────
     task1 = (
-        "Search for the population of India, then calculate what 0.1% of that population is, "
-        "and finally summarise the result in one sentence. Do not use your own knowledge; "
-        "you MUST use the search tool first."
+        "Calculate what 0.1% of population of india."
     )
 
     console.print(
