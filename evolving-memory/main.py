@@ -116,7 +116,7 @@ def get_memory_actions(client, current_memory, user_message):
     
     try:
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             config=types.GenerateContentConfig(
                 system_instruction="You are a memory management assistant. Output structured CRUD actions in JSON.",
                 temperature=0.1,
