@@ -108,7 +108,7 @@ def run_agent(question):
     chat = model.start_chat()
 
     # System-style instruction injected as the first user prompt
-    prompt = f"You are a strict ReAct agent. You must output exactly 'SEARCH <query>' if you need information, or 'ANSWER <final response>' if you are completely sure. Question: {question}"
+    prompt = f"You are a strict ReAct agent. Reason and act. Question: {question}"
 
     for _ in range(5):
         response = chat.send_message(prompt)
