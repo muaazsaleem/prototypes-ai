@@ -437,28 +437,5 @@ Evaluate:
     console.print(table_golden)
     console.print()
 
-    # =========================================================================
-    # OVERALL CONCLUSION
-    # =========================================================================
-    console.print(Rule("[bold yellow]Overall Summary[/bold yellow]", style="yellow"))
-    console.print()
-    
-    conclusion_text = (
-        "LLM-as-a-Judge is a highly scalable, reliable pattern for automated evaluation. By leveraging "
-        "Gemini 2.5 Flash with Pydantic Structured Outputs, we can guarantee that judges produce perfectly "
-        "parsed schemas containing quantitative scores alongside detailed qualitative justifications.\n\n"
-        "1. [bold green]Fixed Rubric Evaluation[/bold green] is perfect for policy enforcement, sentiment checking, and process verification.\n"
-        "2. [bold cyan]Golden Answer Comparison[/bold cyan] allows semantic, subjective verification of knowledge extraction and hallucination detection against standard reference documentation."
-    )
-    
-    console.print(
-        Panel(
-            textwrap.fill(conclusion_text, width=88),
-            title="[bold yellow]Key Takeaways[/bold yellow]",
-            border_style="yellow",
-            padding=(1, 2)
-        )
-    )
-
 if __name__ == "__main__":
     main()
