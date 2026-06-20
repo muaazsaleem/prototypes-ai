@@ -191,7 +191,7 @@ def classify(client: genai.Client, prompt: str, message: str) -> dict:
     """
     full_prompt = f"{prompt}\nCustomer message:\n{message}"
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash",
         contents=full_prompt,
     )
     text = response.text.strip()
