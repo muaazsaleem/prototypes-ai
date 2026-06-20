@@ -38,15 +38,16 @@ PROMPT_V1 = textwrap.dedent("""\
     Output format:
       {"urgency": "LOW|MEDIUM|HIGH", "category": "billing|technical|general"}
 
-    Urgency levels:
-      HIGH   — service outage, data loss, security breach, or active revenue loss
-      MEDIUM — degraded experience, partial failure, time-sensitive non-critical request
-      LOW    — general questions, feature requests, or compliments
+    Rules:
+    - Urgency levels:
+      HIGH   — service outage, data loss, security breach, active revenue loss, or urgent log in issues.
+      MEDIUM — degraded experience, partial failure, time-sensitive non-critical request, or refunds / payment renewal cancellations.
+      LOW    — general questions, billing documentation, API keys/documentation for personal use, feature requests, password reset settings, or compliments.
 
-    Categories:
-      billing   — charges, payments, invoices, refunds, or subscription changes
-      technical — product bugs, errors, performance problems
-      general   — everything else
+    - Categories:
+      billing   — charges, payments, invoices, refunds, or subscription changes.
+      technical — product bugs, errors, performance problems, API tokens, API documentation, or technical setup instructions.
+      general   — general configuration questions, settings (like profile picture, changing/updating password settings), and other non-billing non-technical requests.
 """)
 
 PROMPT_V2 = textwrap.dedent("""\
@@ -70,6 +71,8 @@ PROMPT_V2 = textwrap.dedent("""\
     Additional rule: To improve security and developer support, any message
     mentioning 'API', 'token', 'webhook', 'password', or 'login' MUST be
     classified as HIGH urgency and 'technical', regardless of the context.
+
+    In addition to the above, requests for copies of invoices for accounting should be treated as MEDIUM urgency.
 """)
 
 # ─── Test Suite ───────────────────────────────────────────────────────────────
