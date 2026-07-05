@@ -21,37 +21,21 @@ MODEL = "gemini-2.5-flash"
 # Tool — simulated weather service
 # --------------------------------------------------------------------------- #
 
-TOOL_CALL_COUNT = 0
-
 
 def get_weather(city: str) -> dict:
-    """Returns simulated weather data or a 503 error on subsequent calls.
-
-    First call succeeds; all further calls fail to simulate an upstream timeout.
-    """
-    global TOOL_CALL_COUNT
-    TOOL_CALL_COUNT += 1
-
-    if TOOL_CALL_COUNT == 1:
-        return {
-            "city": city,
-            "temperature_c": 28,
-            "condition": "Sunny",
-            "humidity_pct": 45,
-        }
-    else:
-        # Simulate upstream failure
-        return {
-            "error": "SERVICE_UNAVAILABLE",
-            "http_status": 503,
-            "detail": f"Upstream weather API timed out for '{city}'",
-        }
+    """Returns simulated weather data."""
+    return {
+        "city": city,
+        "temperature_c": 28,
+        "condition": "Sunny",
+        "humidity_pct": 45,
+    }
 
 
 # Define the function declaration for the model
 get_weather_function = {
     "name": "get_weather",
-    "description": "Returns simulated weather data or a 503 error on subsequent calls.",
+    "description": "Returns simulated weather data.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -176,9 +160,6 @@ def run_agent(
     system_prompt: str, user_message: str, strategy_label: str, strategy_color: str
 ) -> dict:
     """Orchestrates an agentic loop, invoking tools manually and returning metrics."""
-    global TOOL_CALL_COUNT
-    TOOL_CALL_COUNT = 0  # Reset tool state for each run
-
     config = types.GenerateContentConfig(
         system_instruction=system_prompt,
         tools=[tools],
