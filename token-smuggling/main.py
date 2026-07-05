@@ -25,7 +25,7 @@ def run_input_guard(prompt: str) -> tuple[bool, str | None]:
     Returns (is_allowed, matched_keyword).
     """
     # Standard security blacklist for database administrative assistants
-    blocked_keywords = ["DROP TABLE", "DROP ALL TABLES"]
+    blocked_keywords = ["DROP"]
     prompt_upper = prompt.upper()
     for keyword in blocked_keywords:
         if keyword in prompt_upper:
