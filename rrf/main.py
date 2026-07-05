@@ -1,118 +1,163 @@
 import numpy as np
+import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.rule import Rule
+from rich.table import Table
 
-class InMemSearch:
-    def __init__(self, documents):
-        self.doc_ids = list(documents.keys())
-        self.docs = documents
-        
-        # 1. Keyword Ranker: Traditional TF-IDF
-        self.vectorizer = TfidfVectorizer(stop_words='english')
-        self.matrix = self.vectorizer.fit_transform(list(documents.values()))
-        
-        # 2. Simulated Semantic Ranker: Conceptual Mapping
-        # In a real system, this would be a Vector/Embedding search.
-        # We simulate it by looking for "conceptual synonyms".
-        self.concepts = {
-            "speed": ["performance", "optimization", "latency", "fast", "lag", "throttle"],
-            "fix": ["troubleshoot", "repair", "maintenance", "bottleneck", "failure", "broken"]
-        }
+# --- Configuration & Corpus ---
 
-    def keyword_search(self, query):
-        query_vec = self.vectorizer.transform([query])
-        scores = cosine_similarity(query_vec, self.matrix).flatten()
-        ranked_indices = np.argsort(scores)[::-1]
-        return [self.doc_ids[i] for i in ranked_indices if scores[i] > 0]
+DOCUMENTS = {
+    "Doc1": "Guide to resolving memory leaks in Python 3.11: fixing garbage collection and optimizing objects.",
+    "Doc2": "Troubleshooting RAM bloat in CPython (Python): resolving heap allocation bottlenecks and GC overhead.",
+    "Doc3": "Python 3.11 release notes and changelog: memory management module updates and minor fixes.",
+    "Doc4": "How to repair a leaky water hose in your garden: a quick DIY fix.",
+    "Doc5": "Java Garbage Collection and Memory Management: resolving heap leaks in JVM.",
+    "Doc6": "A study of RAM hardware architectures: physical memory caches and throughput optimization.",
+    "Doc7": "Automotive repair manual: fixing oil leaks in high-performance engines.",
+    "Doc8": "Python 3.11 memory leak fix in the asyncio event loop.",
+    "Doc9": "Optimizing memory consumption in Go applications: tracing memory leaks using pprof.",
+    "Doc10": "Debugging memory leak issues in older Python 2.7 environments.",
+}
 
-    def semantic_search(self, query):
-        """Simulates a semantic/vector search by matching conceptual synonyms."""
-        query_terms = query.lower().split()
-        scores = {doc_id: 0 for doc_id in self.doc_ids}
-        
-        for term in query_terms:
-            related = self.concepts.get(term, [])
-            for doc_id, text in self.docs.items():
-                text_lower = text.lower()
-                # Score based on how many conceptual terms are found
-                match_count = sum(1 for r in related if r in text_lower)
-                scores[doc_id] += match_count
-        
-        # Sort documents by their conceptual score
-        ranked = sorted([d for d in self.doc_ids if scores[d] > 0], 
-                        key=lambda d: scores[d], reverse=True)
-        return ranked
+# --- Simulated Concept Space Map ---
+# This dictionary maps vocab terms to coordinates in a 5-dimensional concept space:
+# Dimensions: [0: Programming Language, 1: Specific Version, 2: Memory System, 3: Anomaly Type, 4: Action/Resolution]
+CONCEPT_MAP = {
+    # Programming languages / environments
+    "python": [1.0, 0.0, 0.0, 0.0, 0.0],
+    "cpython": [1.0, 0.0, 0.0, 0.0, 0.0],
+    "java": [0.2, 0.0, 0.0, 0.0, 0.0],
+    "jvm": [0.2, 0.0, 0.0, 0.0, 0.0],
+    "go": [0.2, 0.0, 0.0, 0.0, 0.0],
+    "golang": [0.2, 0.0, 0.0, 0.0, 0.0],
+    
+    # Specific software versions
+    "3.11": [0.0, 1.0, 0.0, 0.0, 0.0],
+    "3.11.2": [0.0, 1.0, 0.0, 0.0, 0.0],
+    "2.7": [0.0, 0.2, 0.0, 0.0, 0.0],
+    "3.9": [0.0, 0.4, 0.0, 0.0, 0.0],
+    
+    # Memory management systems
+    "memory": [0.0, 0.0, 1.0, 0.0, 0.0],
+    "ram": [0.0, 0.0, 1.0, 0.0, 0.0],
+    "heap": [0.0, 0.0, 1.0, 0.0, 0.0],
+    "gc": [0.0, 0.0, 0.8, 0.0, 0.0],
+    "garbage": [0.0, 0.0, 0.8, 0.0, 0.0],
+    "collection": [0.0, 0.0, 0.8, 0.0, 0.0],
+    
+    # Anomaly / Fault types
+    "leak": [0.0, 0.0, 0.0, 1.0, 0.0],
+    "leaks": [0.0, 0.0, 0.0, 1.0, 0.0],
+    "leaky": [0.0, 0.0, 0.0, 0.9, 0.0],
+    "bloat": [0.0, 0.0, 0.0, 1.0, 0.0],
+    "consumption": [0.0, 0.0, 0.0, 0.8, 0.0],
+    "bottlenecks": [0.0, 0.0, 0.0, 0.8, 0.0],
+    "accumulation": [0.0, 0.0, 0.0, 0.9, 0.0],
+    
+    # Action / Resolution methods
+    "fix": [0.0, 0.0, 0.0, 0.0, 1.0],
+    "fixes": [0.0, 0.0, 0.0, 0.0, 1.0],
+    "fixing": [0.0, 0.0, 0.0, 0.0, 1.0],
+    "resolving": [0.0, 0.0, 0.0, 0.0, 1.0],
+    "troubleshooting": [0.0, 0.0, 0.0, 0.0, 1.0],
+    "debugging": [0.0, 0.0, 0.0, 0.0, 1.0],
+    "optimizing": [0.0, 0.0, 0.0, 0.0, 1.0],
+    "optimization": [0.0, 0.0, 0.0, 0.0, 1.0],
+    "repair": [0.0, 0.0, 0.0, 0.0, 0.8],
+}
 
-def reciprocal_rank_fusion(rankings, k=60):
+VERDICT_MAP = {
+    "Doc8": ("[bold green]Consensus (Perfect Match)[/bold green]", "Top ranker in both search engines; exact keyword and semantic alignment."),
+    "Doc10": ("[bold green]Consensus (Python 2.7)[/bold green]", "Strong relevance in both; wrong Python version but same core concepts."),
+    "Doc1": ("[bold green]Consensus (Python 3.11)[/bold green]", "Strong relevance in both; perfect version match and conceptual alignment."),
+    "Doc3": ("[bold cyan]Keyword Rescue[/bold cyan]", "Exact 'Python 3.11' & 'fixes' matches. Rescued from poor semantic rank (#6)."),
+    "Doc2": ("[bold magenta]Semantic Rescue[/bold magenta]", "No query words matched! Rescued from poor keyword rank (#7) due to 'CPython RAM bloat' concept."),
+    "Doc9": ("[dim]Go Language Match[/dim]", "Irrelevant language (Go). Suppressed by lack of keyword relevance."),
+    "Doc4": ("[bold red]Keyword Noise Suppressed[/bold red]", "Garden hose DIY leak fix. Promoted by keyword search but demoted by semantic filter."),
+    "Doc5": ("[bold red]Semantic Noise Suppressed[/bold red]", "Java JVM heap leaks. Matches memory/leak concepts but pushed down due to wrong language."),
+    "Doc6": ("[dim]Irrelevant Noise[/dim]", "Hardware RAM architectures. Irrelevant topic, pushed to the bottom."),
+    "Doc7": ("[dim]Irrelevant Noise[/dim]", "Automotive oil leak manual. Irrelevant topic, pushed to the bottom."),
+}
+
+# --- Core Logic ---
+
+def text_to_concept_vector(text):
+    """Tokenizes and represents any text string as a normalized concept vector."""
+    words = re.findall(r'[a-zA-Z0-9\.]+', text.lower())
+    vec = np.zeros(5)
+    for word in words:
+        if word in CONCEPT_MAP:
+            vec += np.array(CONCEPT_MAP[word])
+    norm = np.linalg.norm(vec)
+    if norm > 0:
+        return vec / norm
+    return vec
+
+def keyword_search(query):
+    """Traditional keyword search using TF-IDF."""
+    # We use a custom token pattern to avoid splitting '3.11' into '11'
+    v = TfidfVectorizer(token_pattern=r'(?u)\b[a-zA-Z0-9_.]+\b', stop_words='english')
+    matrix = v.fit_transform(list(DOCUMENTS.values()))
+    q_term_vec = v.transform([query])
+    scores = cosine_similarity(q_term_vec, matrix).flatten()
+    doc_ids = list(DOCUMENTS.keys())
+    ranked = sorted([(doc_ids[i], scores[i]) for i in range(len(doc_ids)) if scores[i] > 0], key=lambda x: x[1], reverse=True)
+    return [doc_id for doc_id, _ in ranked]
+
+def semantic_search(query):
+    """Dense/semantic vector-space search using the mapped concept vectors."""
+    q_vec = text_to_concept_vector(query)
+    scores = []
+    for doc_id, doc_text in DOCUMENTS.items():
+        d_vec = text_to_concept_vector(doc_text)
+        sim = np.dot(q_vec, d_vec) if np.linalg.norm(d_vec) > 0 else 0.0
+        if sim > 0:
+            scores.append((doc_id, sim))
+    ranked = sorted(scores, key=lambda x: x[1], reverse=True)
+    return [doc_id for doc_id, _ in ranked]
+
+def reciprocal_rank_fusion(kw_results, sem_results, k=10):
+    """Applies Reciprocal Rank Fusion formula: Score(d) = sum( 1 / (k + rank(d)) )"""
     scores = {}
-    for rank_list in rankings:
-        for rank, doc_id in enumerate(rank_list, start=1):
-            if doc_id not in scores:
-                scores[doc_id] = 0
-            scores[doc_id] += 1 / (k + rank)
+    for rank, doc_id in enumerate(kw_results, start=1):
+        scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
+    for rank, doc_id in enumerate(sem_results, start=1):
+        scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
 def main():
     console = Console()
     
-    # Scenario: Realistic Overlap (Consensus + Diversity)
-    documents = {
-        "D1": "High performance PC: optimization and speed fix", # Strong in BOTH
-        "D2": "How to fix a leaky faucet in the kitchen",        # Strong Keyword (fix), Weak Semantic
-        "D3": "Latency reduction strategies for fast systems",    # Strong Semantic (speed), Weak Keyword (fast/speed)
-        "D4": "Troubleshooting computer hardware and repair",     # Moderate in BOTH
-        "D5": "Speed limit signs and road safety manual",         # Keyword (speed), No Semantic relevance to 'fix'
-        "D6": "Maintenance routines for industrial machines",     # Semantic (maintenance ~ fix), No Keywords
-        "D7": "A quick fix for common household plumbing",        # Keyword (fix), No Semantic relevance to 'speed'
-        "D8": "Tips for faster web browsing and optimization",    # Semantic (optimization ~ speed), Weak Keyword
-    }
+    # 1. Header
+    console.print(
+        Panel.fit(
+            "[bold yellow]Reciprocal Rank Fusion (RRF) Demonstrator[/bold yellow]\n"
+            "[dim]Comparing Keyword (TF-IDF) vs Semantic (Concept-Space Vector) vs Fused Rankings.[/dim]\n"
+            "[dim]Query: 'Python 3.11 memory leak fix' | Corpus: 10 diverse documents[/dim]",
+            border_style="yellow",
+        )
+    )
+    console.print()
     
-    search_engine = InMemSearch(documents)
-    
-    # Query: "speed fix"
-    query = "speed fix"
-    
-    # Manual override for semantic search to create a more "realistic" varied ranking
-    # Instead of just 0/1 scores, we'll give partial credit for partial conceptual matches
-    def realistic_semantic_search(query):
-        query_terms = query.lower().split()
-        scores = {doc_id: 0.0 for doc_id in search_engine.doc_ids}
-        
-        # Concept weights to create variation
-        weights = {
-            "D1": 2.5, # Hits both concepts perfectly
-            "D3": 2.0, # High 'speed' concept
-            "D4": 1.8, # High 'fix' concept
-            "D8": 1.5, # Moderate 'speed' concept
-            "D6": 1.2, # Moderate 'fix' concept
-            "D2": 0.5, # Very weak conceptual match
-        }
-        
-        for doc_id, weight in weights.items():
-            scores[doc_id] = weight
-            
-        ranked = sorted([d for d in search_engine.doc_ids if scores[d] > 0], 
-                        key=lambda d: scores[d], reverse=True)
-        return ranked
-
     # Get rankings
-    keyword_results = search_engine.keyword_search(query)
-    semantic_results = realistic_semantic_search(query)
-    fused_results = reciprocal_rank_fusion([keyword_results, semantic_results])
-
-    # Display result
-    console.print(Panel(f"[bold cyan]Query:[/bold cyan] {query}", title="RRF Real In-Memory Demo"))
+    query = "Python 3.11 memory leak fix"
+    keyword_results = keyword_search(query)
+    semantic_results = semantic_search(query)
+    fused_results = reciprocal_rank_fusion(keyword_results, semantic_results, k=10)
     
-    table = Table(show_header=True, header_style="bold magenta")
-    table.add_column("Rank", justify="center", style="dim")
-    table.add_column("Keyword Ranker (TF-IDF)", style="green")
-    table.add_column("Semantic Ranker (Conceptual)", style="yellow")
-    table.add_column("Fused Ranking (RRF)", style="bold cyan")
+    # 2. Side-by-Side Comparison Table
+    console.print(Rule("[bold white]Search Engine Run Results[/bold white]", style="white"))
+    console.print()
     
-    # Max rows to display
+    table = Table(show_header=True, header_style="bold", padding=(0, 2), show_edge=False)
+    table.add_column("Rank", justify="center", style="bold")
+    table.add_column("Keyword Ranker (TF-IDF) [Cyan]", style="cyan")
+    table.add_column("Semantic Ranker (Conceptual) [Magenta]", style="magenta")
+    table.add_column("Fused Ranking (RRF) [Bold Yellow]", style="bold yellow")
+    
     max_rows = max(len(keyword_results), len(semantic_results), len(fused_results))
     
     for i in range(max_rows):
@@ -123,27 +168,14 @@ def main():
         
         table.add_row(
             str(i + 1),
-            f"{kw_doc} ({documents.get(kw_doc, '')[:25]}...)" if kw_doc != "-" else "-",
-            f"{sm_doc} ({documents.get(sm_doc, '')[:25]}...)" if sm_doc != "-" else "-",
-            f"{fs_doc} {fs_score}"
+            f"{kw_doc} ({DOCUMENTS.get(kw_doc, '')[:28]}...)" if kw_doc != "-" else "-",
+            f"{sm_doc} ({DOCUMENTS.get(sm_doc, '')[:28]}...)" if sm_doc != "-" else "-",
+            f"{fs_doc} {fs_score}" if fs_doc != "-" else "-"
         )
         
     console.print(table)
+    console.print()
 
-    # Final Unified List
-    console.print("\n[bold cyan]Final Fused Ranking (Unified Results):[/bold cyan]")
-    final_table = Table(show_header=True, header_style="bold green")
-    final_table.add_column("Rank", justify="center")
-    final_table.add_column("Score", justify="right")
-    final_table.add_column("Document Content")
-    
-    for i, (doc_id, score) in enumerate(fused_results, start=1):
-        final_table.add_row(
-            str(i),
-            f"{score:.4f}",
-            f"[bold]{doc_id}:[/bold] {documents.get(doc_id, '')}"
-        )
-    console.print(final_table)
 
 if __name__ == "__main__":
     main()
