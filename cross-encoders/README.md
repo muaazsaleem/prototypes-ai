@@ -1,42 +1,76 @@
 # Cross-Encoder vs Bi-Encoder Prototype
 
-This prototype demonstrates why **Cross-Encoders** are essential for high-precision ranking tasks, even though **Bi-Encoders** (embeddings) are faster for initial retrieval.
+This prototype demonstrates why Cross-Encoders are essential for high-precision ranking tasks, even though Bi-Encoders are faster for initial retrieval.
 
-## The Experiment
-We rank a set of documents against the query: `"apple computer"`.
+## Comparative Scenarios
 
-### Why Cross-Encoders are Better
-In this example, we have documents about both the **technology company** and the **fruit**.
+The application demonstrates model performance across three classic semantic search challenges where Bi-Encoders frequently struggle.
 
-| Document | Bi-Encoder (Cosine) | Cross-Encoder (Score) | Verdict |
-| :--- | :--- | :--- | :--- |
-| "The new MacBook Pro is a powerful computer..." | ~0.55 (High) | **+3.82 (Very High)** | **Correct Top Result** |
-| "The apple is a sweet, edible fruit..." | ~0.43 (Medium) | **-5.73 (Very Low)** | **Correctly Rejected** |
+### Scenario 1: Lexical and Semantic Ambiguity
 
-### The "Why"
-1. **Bi-Encoders (Embeddings):**
-   - Process the query and document **independently**.
-   - The word "apple" in the query and "apple" in the fruit document create a strong vector alignment.
-   - The Bi-Encoder sees "apple" and "apple" and thinks they are related, even if the context (fruit vs tech) is different.
-   - **Result:** High noise; non-relevant documents often get high scores if they share keywords.
+Query: `apple computer`
 
-2. **Cross-Encoders:**
-   - Process the query and document **simultaneously** (Full Self-Attention).
-   - The model sees the *interaction* between "computer" in the query and "fruit" in the document.
-   - It "understands" that in the presence of the word "computer," the fruit-related "apple" is a mismatch.
-   - **Result:** Massive score deltas. It doesn't just rank them; it clearly separates signal from noise.
+- Concept: Bi-encoders are biased by keyword overlap. When searching for a tech brand, documents containing the word apple (like apple pie) align strongly in vector space. Cross-encoders use joint attention to recognize that computer restricts the meaning of apple to technology.
 
-## Setup & Usage
+### Scenario 2: Logical Relation and Negation
 
-1. **Install Dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+Query: `Does aspirin treat headaches?`
 
-2. **Run the Prototype:**
-   ```bash
-   python3 main.py
-   ```
+- Concept: Bi-encoders struggle with semantic relationships (causes vs. treats) and negation because they compress sentences into a single vector, losing syntactical directionality. Cross-encoders maintain token-to-token interactions, accurately resolving complex logic.
 
-## Conclusion
-Use **Bi-Encoders** for searching through millions of documents (Fast). Use **Cross-Encoders** to re-rank the top 50-100 results for maximum accuracy (Precise).
+### Scenario 3: Asymmetric Directional Search
+
+Query: `flight from Boston to New York`
+
+- Concept: Directional queries are difficult for bi-encoders. Since the vocabulary of Boston to New York and New York to Boston is identical, their dense embeddings are nearly identical. Cross-encoders capture precise sequence order and prepositions.
+
+## System Architecture
+
+1. Bi-Encoders:
+  - Process the query and document independently.
+  - Compute cosine similarity between query and document vectors.
+  - Highly efficient for indexing and retrieving from millions of documents.
+2. Cross-Encoders:
+  - Process the query and document simultaneously using self-attention.
+  - Produce a classification score representing relevance.
+  - Highly precise but computationally intensive, making them ideal for re-ranking the top results.
+
+## Setup and Usage
+
+Follow these steps to run the prototype.
+
+### Installation
+
+Install the required dependencies.
+
+```bash
+pip install -r requirements.txt
+```
+
+### Running Scenarios
+
+Run all scenarios in sequence.
+
+```bash
+python3 main.py --scenario all
+```
+
+Run a specific scenario (1, 2, or 3).
+
+```bash
+python3 main.py --scenario 1
+```
+
+### Custom Evaluation
+
+Run a custom query with a list of candidate documents.
+
+```bash
+python3 main.py --query "your query here" --docs "doc 1" "doc 2" "doc 3"
+```
+
+Alternatively, run the script without arguments in a terminal for an interactive menu.
+
+```bash
+python3 main.py
+```
