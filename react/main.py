@@ -580,8 +580,68 @@ def run_react_agent(
         while thought.lower().startswith("thought:"):
             thought = thought[len("thought:"):].strip()
 
-        # ── Print Step Header & Model Response ────────────────────────────────
+        # ── Print Step Header & Model Input ───────────────────────────────────
         console.print(f"\n[bold cyan]── Step {step:02d} ──[/bold cyan]")
+
+        # Render Model Input (the context history sent to the model on this step)
+        input_elements = []
+        input_elements.append(Text.assemble(("SYSTEM: ", "dim"), (prompt.strip(), "dim")))
+        input_elements.append(Rule(style="bright_black"))
+        
+        for msg in contents:
+            role = msg.role
+            parts_texts = []
+            role_style = "user"
+            
+            for part in msg.parts:
+                if getattr(part, "text", None):
+                    parts_texts.append(part.text.strip())
+                elif getattr(part, "function_call", None):
+                    fc = part.function_call
+                    clean_args = {k: v for k, v in fc.args.items() if k != "thought"}
+                    args_str = ", ".join(f"{k}={v}" for k, v in clean_args.items())
+                    parts_texts.append(f"[Function Call: {fc.name}({args_str})]")
+                elif getattr(part, "function_response", None):
+                    fr = part.function_response
+                    res_val = fr.response.get("result", "")
+                    if len(str(res_val)) > 300:
+                        res_val = str(res_val)[:300] + "... [TRUNCATED]"
+                    parts_texts.append(f"[Function Response: {fr.name} = {res_val}]")
+                    role_style = "tool"
+            
+            content_str = "\n".join(parts_texts).strip()
+            
+            if role == "model":
+                label_style = "bold green"
+                content_style = "green"
+                role_label = "ASSISTANT"
+            elif role_style == "tool":
+                label_style = "bold yellow"
+                content_style = "yellow"
+                role_label = "TOOL"
+            else:
+                label_style = "bold blue"
+                content_style = "blue"
+                role_label = "USER"
+                
+            indent = " " * (len(role_label) + 2)
+            wrapped = textwrap.fill(content_str, width=82, subsequent_indent=indent)
+            input_elements.append(Text.assemble((f"{role_label}: ", label_style), (wrapped, content_style)))
+            input_elements.append(Rule(style="bright_black"))
+            
+        if input_elements:
+            input_elements.pop() # remove trailing rule
+            
+        console.print(
+            Panel(
+                Group(*input_elements),
+                title="[bold bright_black]Model Input[/bold bright_black]",
+                border_style="bright_black",
+                padding=(1, 2),
+            )
+        )
+
+        # ── Print Model Response ──────────────────────────────────────────────
         
         # Construct raw response text for display inside the model response block
         resp_parts = []
