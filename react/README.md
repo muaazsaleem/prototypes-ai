@@ -1,49 +1,72 @@
-# ReAct Agent Prototype
+# ReAct Agent Token Overhead Demonstration
 
-Demonstrates the **ReAct (Reasoning + Acting)** pattern: an LLM that interleaves
-Thought → Action → Observation cycles to solve tasks using external tools.
+Demonstrates the **ReAct (Reasoning + Acting)** pattern: how an LLM interleaves
+Thought → Action → Observation cycles to solve tasks using external tools, and
+analytically showcases the **quadratic token overhead** ($O(N^2)$) that can occur
+in agentic loops if left unmanaged.
 
-## Concept
+---
 
-ReAct lets a model decide *what to think*, *which tool to call*, and *what to infer
-from the result* — all in a tight loop. Each cycle is:
+## 🔬 The Core Problem: Why Agentic Loops are Token-Hungry
 
-```
-Thought  →  Action (tool call)  →  Observation (tool result)  →  repeat
-```
+Every time an agent runs a ReAct step, it appends the entire history of:
+- All previous **Thoughts**
+- All previous **Tool Calls (Actions)**
+- All previous **Tool Responses (Observations)**
 
-This prototype shows the ReAct pattern in action:
+And resends that complete conversational history to the model. This leads to several massive overheads:
 
-- **The Task** requires three tools in order (search → calculator → summariser). The
-  agent calls them in the right sequence and produces a correct final answer.
+1. **Quadratic Scaling ($O(N^2)$):** If a task requires $N$ steps and each step adds $K$ tokens on average, the input tokens for step $i$ are roughly $Prompt + (i-1)K$. Summing this over $N$ steps yields a total billing of:
+   $$\text{Total Input Tokens} = N \cdot Prompt + \frac{N(N-1)}{2} K \approx O(N \cdot Prompt + N^2 \cdot K)$$
+2. **Double Billing on Thoughts:** Any thought the LLM generates is billed once as an **Output Token**, and then resent as an **Input Token** in *every subsequent step*.
+3. **Payload Bloat:** If a tool returns a massive raw document (e.g., scraped HTML or raw SQL tables), that entire chunk is carried forward and billed as input on every subsequent cycle.
+4. **Infinite Loops:** If an agent gets stuck retrying a query or correcting a parsing error, it can quickly consume thousands of tokens with zero progress.
 
-The key insight: **ReAct is powerful but needs explicit loop detection and step
-budgets**. Without them, a stuck agent runs forever.
+---
 
-## Tools
+## 🏃 Run the Demo
 
-| Tool | What it does |
-|------|-------------|
-| `search(query)` | Looks up a small in-memory knowledge base (simulates web search) |
-| `calculator(expr)` | Safely evaluates arithmetic expressions via AST (no `eval`) |
-| `summariser(text)` | Calls Gemini to compress text into one sentence |
-
-## Setup
+To run the demonstration and view the token tracking metrics in real-time:
 
 ```bash
+# 1. Install dependencies
 pip install -r requirements.txt
-export GEMINI_API_KEY="your-key-here"
-```
 
-## Run
+# 2. Export your Gemini API key
+export GEMINI_API_KEY="your-api-key-here"
 
-```bash
+# 3. Run the demonstration script
 python main.py
 ```
 
-## Parameters (top of `main.py`)
+---
 
-| Name | Default | Effect |
-|------|---------|--------|
-| `MAX_STEPS` | `12` | Hard step budget; agent is halted when reached |
-| Loop detection window | `3` | Halts if the same tool+arg appears 3 times in a row |
+## 📊 Simulated Scenarios
+
+The script runs three scenarios to demonstrate these concepts:
+
+### Scenario 1: Optimized/Compact ReAct (Baseline)
+- **Task:** Calculate $0.1\%$ of the population of India.
+- **Payloads:** Returns compact, targeted factual answers.
+- **Safety:** Loop detection enabled.
+- **Result:** Completes quickly in 3 steps with very low token consumption.
+
+### Scenario 2: Raw/Bloated Payload (Unoptimized RAG)
+- **Task:** Compare the population and GDP of India and China, calculate their GDP per capita, and summarize.
+- **Payloads:** Simulated tool responses are large, detailed paragraphs (~700 tokens each).
+- **Result:** Demonstrates how large RAG chunks compound quadratically, running up the token count exponentially across 6+ steps.
+
+### Scenario 3: Runaway Looping Agent (Safeguards Disabled)
+- **Task:** Search for population of Brazil (missing from DB).
+- **Payloads:** Returns a busy/retry prompt.
+- **Safety:** Loop detection **disabled**; max steps capped at 8.
+- **Result:** Demonstrates how easily a minor failure mode or transient error can burn through thousands of tokens in seconds.
+
+---
+
+## 🛠️ Best Practices for Mitigation
+
+1. **Strict Loop Detection:** Automatically halt agents if they repeat the exact same tool and arguments (implemented in Scenario 1).
+2. **Context Pruning & Summarization:** Summarize previous steps and compress tool responses, only carrying forward synthesized insights.
+3. **Chunked & Targeted Retrieval:** Ensure tools return only the exact data required, rather than dumping large database rows or raw pages.
+4. **Parallel Tool Calling:** Let the LLM trigger multiple independent actions simultaneously in a single turn, reducing sequential turns.
