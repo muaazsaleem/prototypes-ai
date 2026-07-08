@@ -7,6 +7,15 @@ in agentic loops if left unmanaged.
 
 ---
 
+## 🧰 Tools and Setup
+
+This prototype implements the following tools:
+- **`search`**: Simulated web search (compact vs. bloated modes) to find factual demographic and economic information.
+- **`summariser`**: Text summarisation via Gemini to compress large payloads.
+- **`calculator` (Commented Out)**: Fully implemented arithmetic expression evaluator. It is commented out of the active tools list by default, demonstrating how the agent falls back to performing calculations internally using its native reasoning capabilities when the tool is unexposed. You can uncomment it in `main.py` to compare tool-based vs. internal math processing.
+
+---
+
 ## 🔬 The Core Problem: Why Agentic Loops are Token-Hungry
 
 Every time an agent runs a ReAct step, it appends the entire history of:
@@ -41,32 +50,20 @@ python main.py
 
 ---
 
-## 📊 Simulated Scenarios
+## 📊 Demonstration Scenario
 
-The script runs three scenarios to demonstrate these concepts:
+The script runs an unoptimized RAG scenario to demonstrate quadratic token accumulation:
 
-### Scenario 1: Optimized/Compact ReAct (Baseline)
-- **Task:** Calculate $0.1\%$ of the population of India.
-- **Payloads:** Returns compact, targeted factual answers.
-- **Safety:** Loop detection enabled.
-- **Result:** Completes quickly in 3 steps with very low token consumption.
-
-### Scenario 2: Raw/Bloated Payload (Unoptimized RAG)
-- **Task:** Compare the population and GDP of India and China, calculate their GDP per capita, and summarize.
+### Scenario: Raw/Bloated Payload (Unoptimized RAG)
+- **Task:** Calculate the population density for both India and China. Identify the country with the lower density, and calculate what its total GDP would be if its population increased to match the other country's density.
 - **Payloads:** Simulated tool responses are large, detailed paragraphs (~700 tokens each).
 - **Result:** Demonstrates how large RAG chunks compound quadratically, running up the token count exponentially across 6+ steps.
-
-### Scenario 3: Runaway Looping Agent (Safeguards Disabled)
-- **Task:** Search for population of Brazil (missing from DB).
-- **Payloads:** Returns a busy/retry prompt.
-- **Safety:** Loop detection **disabled**; max steps capped at 8.
-- **Result:** Demonstrates how easily a minor failure mode or transient error can burn through thousands of tokens in seconds.
 
 ---
 
 ## 🛠️ Best Practices for Mitigation
 
-1. **Strict Loop Detection:** Automatically halt agents if they repeat the exact same tool and arguments (implemented in Scenario 1).
+1. **Strict Loop Detection:** Automatically halt agents if they repeat the exact same tool and arguments.
 2. **Context Pruning & Summarization:** Summarize previous steps and compress tool responses, only carrying forward synthesized insights.
 3. **Chunked & Targeted Retrieval:** Ensure tools return only the exact data required, rather than dumping large database rows or raw pages.
 4. **Parallel Tool Calling:** Let the LLM trigger multiple independent actions simultaneously in a single turn, reducing sequential turns.

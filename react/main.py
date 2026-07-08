@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
 ReAct Agent Prototype - Token Overhead Demonstration
-Demonstrates the ReAct (Reasoning + Acting) loop with three tools:
+Demonstrates the ReAct (Reasoning + Acting) loop with tools:
   - search: simulated web search (compact vs bloated modes)
-  - calculator: arithmetic expression evaluator
   - summariser: text summarisation via Gemini
 
 This version tracks, measures, and visualises the quadratic token overhead 
@@ -304,74 +303,6 @@ def tool_search(query: str) -> str:
     )
 
 
-def tool_calculator(expression: str) -> str:
-    """Safely evaluates an arithmetic mathematical expression.
-
-    Supports basic operators (+, -, *, /, **) and specific math functions.
-    Uses ast.parse to prevent arbitrary code execution vulnerabilities.
-
-    Args:
-        expression: A string containing the mathematical expression.
-
-    Returns:
-        The evaluated result as a string, or an error message.
-    """
-    safe_names = {
-        "sqrt": math.sqrt,
-        "log": math.log,
-        "log10": math.log10,
-        "abs": abs,
-        "round": round,
-        "pi": math.pi,
-        "e": math.e,
-    }
-
-    allowed_ops = {
-        ast.Add: operator.add,
-        ast.Sub: operator.sub,
-        ast.Mult: operator.mul,
-        ast.Div: operator.truediv,
-        ast.Pow: operator.pow,
-        ast.USub: operator.neg,
-        ast.UAdd: operator.pos,
-    }
-
-    def _eval(node):
-        if isinstance(node, ast.Constant):
-            return node.value
-        if isinstance(node, ast.Name):
-            if node.id in safe_names:
-                return safe_names[node.id]
-            raise ValueError(f"Unknown name: {node.id}")
-        if isinstance(node, ast.BinOp):
-            op = allowed_ops.get(type(node.op))
-            if op is None:
-                raise ValueError(f"Unsupported operator: {node.op}")
-            return op(_eval(node.left), _eval(node.right))
-        if isinstance(node, ast.UnaryOp):
-            op = allowed_ops.get(type(node.op))
-            if op is None:
-                raise ValueError(f"Unsupported unary op: {node.op}")
-            return op(_eval(node.operand))
-        if isinstance(node, ast.Call):
-            func = _eval(node.func)
-            args = [_eval(a) for a in node.args]
-            return func(*args)
-        raise ValueError(f"Unsupported node type: {type(node)}")
-
-    # Clean up expression (handles variations of inputs like equations, formulas, units)
-    clean_expr = expression.replace("$", "").replace("trillion", "* 10**12").replace("billion", "* 10**9").replace("million", "* 10**6")
-    # Strip non-mathematical characters that might leak
-    clean_expr = re.sub(r'[a-zA-Z]{4,}', '', clean_expr) # remove long words but keep e.g. 'pi', 'abs', 'log'
-
-    try:
-        tree = ast.parse(clean_expr.strip(), mode="eval")
-        result = _eval(tree.body)
-        return f"{result}"
-    except Exception as exc:
-        return f"Calculator error: {exc}"
-
-
 def tool_summariser(text: str) -> str:
     """Summarises the provided text down to a single concise sentence.
 
@@ -393,11 +324,30 @@ def tool_summariser(text: str) -> str:
     return response.text.strip()
 
 
+def tool_calculator(expression: str) -> str:
+    """Evaluates an arithmetic mathematical expression using Python's built-in eval.
+
+    Args:
+        expression: A string containing the mathematical expression.
+
+    Returns:
+        The evaluated result as a string, or an error message.
+    """
+    # Clean up expression (handles variations of inputs like equations, formulas, units)
+    clean_expr = expression.replace("$", "").replace("trillion", "* 10**12").replace("billion", "* 10**9").replace("million", "* 10**6")
+    try:
+        # Evaluate using Python's built-in eval, with math module functions made available
+        result = eval(clean_expr.strip(), {"__builtins__": {}, "math": math, "abs": abs, "round": round, "pow": pow})
+        return f"{result}"
+    except Exception as exc:
+        return f"Calculator error: {exc}"
+
+
 # Registry maps tool name -> callable
 TOOLS = {
     "search": tool_search,
-    "calculator": tool_calculator,
     "summariser": tool_summariser,
+    "calculator": tool_calculator,
 }
 
 # ── Function Declarations ─────────────────────────────────────────────────────
@@ -408,35 +358,12 @@ search_func = {
     "parameters": {
         "type": "object",
         "properties": {
-            "thought": {
-                "type": "string",
-                "description": "Your step-by-step reasoning explaining why you are performing this search, what you expect to find, and how it helps solve the task."
-            },
             "query": {
                 "type": "string",
                 "description": "The exact string or topic to look up (e.g. 'population of india', 'gdp of china')."
             }
         },
-        "required": ["thought", "query"],
-    },
-}
-
-calculator_func = {
-    "name": "calculator",
-    "description": "Safely evaluates an arithmetic mathematical expression. Supports basic operators (+, -, *, /, **).",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "thought": {
-                "type": "string",
-                "description": "Your detailed step-by-step math reasoning explaining what you are calculating, why you are calculating it, and what the numbers represent."
-            },
-            "expr": {
-                "type": "string",
-                "description": "The mathematical expression to evaluate (e.g. '3.73 * 10**12 / (1.44 * 10**9)')."
-            }
-        },
-        "required": ["thought", "expr"],
+        "required": ["query"],
     },
 }
 
@@ -446,21 +373,38 @@ summariser_func = {
     "parameters": {
         "type": "object",
         "properties": {
-            "thought": {
-                "type": "string",
-                "description": "Your detailed step-by-step reasoning explaining why you are summarising this text and what main point you want to capture."
-            },
             "text": {
                 "type": "string",
                 "description": "The source text to summarize."
             }
         },
-        "required": ["thought", "text"],
+        "required": ["text"],
+    },
+}
+
+calculator_func = {
+    "name": "calculator",
+    "description": "Evaluates an arithmetic mathematical expression using Python's built-in eval.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "expr": {
+                "type": "string",
+                "description": "The mathematical expression to evaluate (e.g. '3.73 * 10**12 / (1.44 * 10**9)')."
+            }
+        },
+        "required": ["expr"],
     },
 }
 
 GEMINI_TOOLS = types.Tool(
-    function_declarations=[search_func, calculator_func, summariser_func]
+    function_declarations=[
+        search_func,
+        summariser_func,
+        # TO DEMO CALCULATOR USAGE: Uncomment the line below to pass the calculator tool to the agent.
+        # When commented, the agent calculates internally. When uncommented, it delegates to the tool.
+        calculator_func,
+    ]
 )
 
 # ── ReAct prompt template ─────────────────────────────────────────────────────
@@ -471,7 +415,7 @@ At each step, you MUST first think before taking any action. Every single tool c
 
 Rules:
 - Do NOT use your own internal knowledge for facts; always use the 'search' tool.
-- Do NOT perform math yourself; always use the 'calculator' tool.
+# - Do NOT perform math yourself; always use the 'calculator' tool. (Uncomment to enforce calculator usage)
 - You MUST wait for the tool observation before taking the next step.
 - Gather all necessary information before providing your final answer.
 """
@@ -639,10 +583,10 @@ def run_react_agent(
             # Precisely extract execution parameters based on schema
             if tool_name == "search":
                 tool_arg_val = tool_args.get("query", "")
-            elif tool_name == "calculator":
-                tool_arg_val = tool_args.get("expr", "")
             elif tool_name == "summariser":
                 tool_arg_val = tool_args.get("text", "")
+            elif tool_name == "calculator":
+                tool_arg_val = tool_args.get("expr", "")
             else:
                 tool_arg_val = ""
             
@@ -764,7 +708,7 @@ def run_react_agent(
 
 
 def main() -> None:
-    """Main entry point orchestrating the three ReAct agent scenarios and comparison."""
+    """Main entry point orchestrating the ReAct agent demonstration."""
     console.print(
         Panel.fit(
             "[bold yellow]ReAct Agent Token Overhead Demonstration[/bold yellow]\n"
@@ -777,28 +721,14 @@ def main() -> None:
 
     results = []
 
-    # ── SCENARIO 1: Compact Baseline ──────────────────────────────────────────
-    scenario_1_title = "Scenario 1: Optimized/Compact ReAct (Baseline)"
-    console.print(Rule(f"[bold green]{scenario_1_title}[/bold green]", style="green"))
-    task_1 = (
-        "Calculate the population density (population divided by land area in square kilometres) for "
-        "both India and China. Identify the country with the lower density, and calculate what its "
-        "total GDP would be if its population increased to match the other country's density (assuming "
-        "its land area and current GDP per capita remain unchanged)."
-    )
-    console.print(f"  [bold]Task:[/bold] [white]{task_1}[/white]")
-    console.print(f"  [dim]Setup: Compact in-memory answers, loop detection enabled.[/dim]\n")
-    
-    stats_1 = run_react_agent(task_1, use_detailed=False, disable_loop_detection=False)
-    stats_1["name"] = scenario_1_title
-    results.append(stats_1)
-    
-    console.print("\n" * 2)
-
     # ── SCENARIO 2: Bloated Payload (Naive RAG / Scrape) ──────────────────────
     scenario_2_title = "Scenario 2: Raw/Bloated Payload (Unoptimized RAG)"
     console.print(Rule(f"[bold magenta]{scenario_2_title}[/bold magenta]", style="magenta"))
-    task_2 = task_1  # Exact same task to show unoptimized vs optimized token growth
+    task_2 = (
+        "Calculate the population density for both India and China. Identify the "
+        "country with the lower density, and calculate what its total GDP would be "
+        "if its population increased to match the other country's density."
+    )
     console.print(f"  [bold]Task:[/bold] [white]{task_2}[/white]")
     console.print(f"  [dim]Setup: Tool returns raw, massive paragraphs (700+ tokens each), simulating raw scrapers.[/dim]\n")
     
@@ -808,24 +738,11 @@ def main() -> None:
 
     console.print("\n" * 2)
 
-    # ── SCENARIO 3: Runaway Looping Agent (Safeguards Disabled) ───────────────
-    scenario_3_title = "Scenario 3: Runaway Looping Agent (Safeguards Disabled)"
-    console.print(Rule(f"[bold red]{scenario_3_title}[/bold red]", style="red"))
-    task_3 = "Search for population of Brazil, then calculate what 0.1% of that is."
-    console.print(f"  [bold]Task:[/bold] [white]{task_3}[/white]")
-    console.print(f"  [dim]Setup: Search query is missing, triggering a retry prompt. Loop detection disabled. Max steps: 8.[/dim]\n")
-    
-    stats_3 = run_react_agent(task_3, use_detailed=False, disable_loop_detection=True, max_steps=8)
-    stats_3["name"] = scenario_3_title
-    results.append(stats_3)
-
-    console.print("\n" * 2)
-
-    # ── COMPARATIVE ANALYSIS REPORT ───────────────────────────────────────────
-    console.print(Rule("[bold yellow]ReAct Token overhead - Comparative Report[/bold yellow]", style="yellow"))
+    # ── TOKEN CONSUMPTION REPORT ──────────────────────────────────────────────
+    console.print(Rule("[bold yellow]ReAct Token Overhead Report[/bold yellow]", style="yellow"))
     console.print()
 
-    table = Table(title="Agentic Token Consumption Comparison", header_style="bold cyan", border_style="yellow")
+    table = Table(title="Agentic Token Consumption Overview", header_style="bold cyan", border_style="yellow")
     table.add_column("Scenario", style="bold", min_width=25)
     table.add_column("Steps", justify="right")
     table.add_column("Billed Input", justify="right")
