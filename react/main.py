@@ -411,11 +411,20 @@ GEMINI_TOOLS = types.Tool(
 
 SYSTEM_PROMPT = """You are a helpful ReAct agent. Solve the task step by step using the provided tools.
 
-At each step, you MUST first think before taking any action. Every single tool call you execute MUST include a detailed, meaningful 'thought' argument explaining your current reasoning, what information is missing, and why you are calling that specific tool.
+At each step, you MUST first think before taking any action. You MUST output your detailed, step-by-step reasoning (Thought) as plain text BEFORE you make any tool call. Do not call a tool without writing your Thought first.
 
 Rules:
 - Do NOT use your own internal knowledge for facts; always use the 'search' tool.
-# - Do NOT perform math yourself; always use the 'calculator' tool. (Uncomment to enforce calculator usage)
+- You MUST wait for the tool observation before taking the next step.
+- Gather all necessary information before providing your final answer.
+"""
+
+SUPPRESSED_SYSTEM_PROMPT = """You are a helpful ReAct agent. Solve the task step by step using the provided tools.
+
+CRITICAL RULE: You MUST NOT write any textual Thoughts, reasoning, plans, or step-by-step calculations. You MUST immediately and directly output a function call or the final answer with no preamble and no self-talk. Go straight to calling tools.
+
+Rules:
+- Do NOT use your own internal knowledge for facts; always use the 'search' tool.
 - You MUST wait for the tool observation before taking the next step.
 - Gather all necessary information before providing your final answer.
 """
@@ -424,7 +433,11 @@ Rules:
 
 
 def _call_model_with_retry(
-    contents: list, max_retries: int = 5, base_delay: float = 10.0
+    contents: list,
+    system_prompt: str,
+    include_thoughts: bool,
+    max_retries: int = 5,
+    base_delay: float = 10.0,
 ):
     """Invokes the LLM using the current history, retrying on transient errors."""
     for attempt in range(max_retries):
@@ -433,9 +446,10 @@ def _call_model_with_retry(
                 model=MODEL_ID,
                 contents=contents,
                 config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
+                    system_instruction=system_prompt,
                     temperature=0.0,
                     tools=[GEMINI_TOOLS],
+                    thinking_config=types.ThinkingConfig(include_thoughts=include_thoughts),
                 ),
             )
             return response
@@ -473,11 +487,15 @@ def run_react_agent(
     task: str,
     use_detailed: bool = False,
     disable_loop_detection: bool = False,
+    disable_thinking: bool = False,
     max_steps: int = MAX_STEPS,
 ) -> dict:
     """Executes the ReAct loop using native Function Calling until completion, tracking tokens."""
     global USE_DETAILED_SEARCH
     USE_DETAILED_SEARCH = use_detailed
+
+    prompt = SUPPRESSED_SYSTEM_PROMPT if disable_thinking else SYSTEM_PROMPT
+    include_thoughts = not disable_thinking
 
     start = time.time()
 
@@ -499,13 +517,23 @@ def run_react_agent(
 
     for step in range(1, max_steps + 1):
         # ── Model call ────────────────────────────────────────────────────────
-        response = _call_model_with_retry(contents)
+        response = _call_model_with_retry(contents, prompt, include_thoughts)
 
-        if not response.candidates or not response.candidates[0].content.parts:
-            console.print("  [bold red]Error:[/bold red] [red]Model returned empty response.[/red]")
+        # Robustly handle empty responses or blocked contents (e.g. due to safety or api errors)
+        if not response.candidates:
+            console.print("  [bold red]Error:[/bold red] [red]Model returned no candidates.[/red]")
+            break
+            
+        candidate = response.candidates[0]
+        if candidate.content is None or not candidate.content.parts:
+            finish_reason = getattr(candidate, "finish_reason", "UNKNOWN")
+            console.print(
+                f"  [bold red]Error:[/bold red] [red]Model returned empty content.[/red] "
+                f"[dim](Finish Reason: {finish_reason})[/dim]"
+            )
             break
 
-        model_content = response.candidates[0].content
+        model_content = candidate.content
 
         # ── Token Tracking ────────────────────────────────────────────────────
         usage = getattr(response, "usage_metadata", None)
@@ -534,14 +562,23 @@ def run_react_agent(
         # Check for function call
         fc_part = next((p for p in model_content.parts if getattr(p, "function_call", None)), None)
 
-        # Extract textual thought or fetch it from the tool arguments
-        text_parts = [p.text for p in model_content.parts if getattr(p, "text", None)]
+        # Extract textual thought (from native thoughts, regular text, or legacy args)
+        text_parts = []
+        for p in model_content.parts:
+            if getattr(p, "thought", False) and getattr(p, "text", None):
+                text_parts.append(p.text)
+            elif getattr(p, "text", None):
+                text_parts.append(p.text)
         thought = "\n".join(text_parts).strip()
         
         if fc_part and fc_part.function_call.args:
             args = fc_part.function_call.args
             if "thought" in args:
                 thought = args["thought"]
+
+        # Normalize extracted thought by stripping case-insensitive nested/recursive "Thought:" prefixes
+        while thought.lower().startswith("thought:"):
+            thought = thought[len("thought:"):].strip()
 
         # ── Print Step Header & Model Response ────────────────────────────────
         console.print(f"\n[bold cyan]── Step {step:02d} ──[/bold cyan]")
@@ -606,8 +643,15 @@ def run_react_agent(
             # Record step for loop detection
             step_history.append({"tool": tool_name, "arg": tool_arg_val})
             
-            # Append model's native parts
-            contents.append(model_content)
+            # Reconstruct model content to explicitly carry forward the plain text thought
+            # and the function call back in the conversation history for full reasoning context.
+            history_parts = []
+            if thought:
+                history_parts.append(types.Part.from_text(text=f"Thought: {thought}"))
+            if fc_part:
+                history_parts.append(fc_part)
+                
+            contents.append(types.Content(role="model", parts=history_parts))
             
             # Append function response
             fr_part = types.Part.from_function_response(
@@ -711,8 +755,8 @@ def main() -> None:
     """Main entry point orchestrating the ReAct agent demonstration."""
     console.print(
         Panel.fit(
-            "[bold yellow]ReAct Agent Token Overhead Demonstration[/bold yellow]\n"
-            "[dim]Measures the quadratic token accumulation of the Thought-Action-Observation loop.[/dim]\n"
+            "[bold yellow]ReAct Agent Reasoning & Thought Demonstration[/bold yellow]\n"
+            "[dim]Demonstrates that Chain-of-Thought (CoT) is essential for solving complex reasoning tasks.[/dim]\n"
             f"[dim]Models: {MODEL_ID} · Input: ${PRICE_INPUT_PER_M}/1M · Output: ${PRICE_OUTPUT_PER_M}/1M[/dim]",
             border_style="yellow",
         )
@@ -720,45 +764,59 @@ def main() -> None:
     console.print()
 
     results = []
-
-    # ── SCENARIO 2: Bloated Payload (Naive RAG / Scrape) ──────────────────────
-    scenario_2_title = "Scenario 2: Raw/Bloated Payload (Unoptimized RAG)"
-    console.print(Rule(f"[bold magenta]{scenario_2_title}[/bold magenta]", style="magenta"))
-    task_2 = (
+    task = (
         "Calculate the population density for both India and China. Identify the "
         "country with the lower density, and calculate what its total GDP would be "
         "if its population increased to match the other country's density."
     )
-    console.print(f"  [bold]Task:[/bold] [white]{task_2}[/white]")
-    console.print(f"  [dim]Setup: Tool returns raw, massive paragraphs (700+ tokens each), simulating raw scrapers.[/dim]\n")
+
+    # ── SCENARIO 1: Suppressed Thoughts (Disabled CoT) ────────────────────────
+    scenario_1_title = "Scenario 1: Suppressed Thoughts (Disabled CoT / Fast Action)"
+    console.print(Rule(f"[bold red]{scenario_1_title}[/bold red]", style="red"))
+    console.print(f"  [bold]Task:[/bold] [white]{task}[/white]")
+    console.print(f"  [dim]Setup: System prompt strictly forbids any textual thoughts or reasoning steps.[/dim]")
+    console.print(f"  [dim]Result: The model is forced to call tools immediately without planning, leading to errors.[/dim]\n")
     
-    stats_2 = run_react_agent(task_2, use_detailed=True, disable_loop_detection=False)
+    stats_1 = run_react_agent(task, use_detailed=True, disable_loop_detection=False, disable_thinking=True)
+    stats_1["name"] = scenario_1_title
+    results.append(stats_1)
+
+    console.print("\n" * 2)
+
+    # ── SCENARIO 2: Enabled Thoughts (Active CoT / Standard ReAct) ────────────
+    scenario_2_title = "Scenario 2: Enabled Thoughts (Active CoT / Standard ReAct)"
+    console.print(Rule(f"[bold green]{scenario_2_title}[/bold green]", style="green"))
+    console.print(f"  [bold]Task:[/bold] [white]{task}[/white]")
+    console.print(f"  [dim]Setup: Standard ReAct. Thoughts are enabled and carried forward in standard text history.[/dim]")
+    console.print(f"  [dim]Result: The model plans methodically, processes data, and succeeds flawlessly.[/dim]\n")
+    
+    stats_2 = run_react_agent(task, use_detailed=True, disable_loop_detection=False, disable_thinking=False)
     stats_2["name"] = scenario_2_title
     results.append(stats_2)
 
     console.print("\n" * 2)
 
-    # ── TOKEN CONSUMPTION REPORT ──────────────────────────────────────────────
-    console.print(Rule("[bold yellow]ReAct Token Overhead Report[/bold yellow]", style="yellow"))
+    # ── TOKEN CONSUMPTION & COMPARISON REPORT ─────────────────────────────────
+    console.print(Rule("[bold yellow]ReAct Reasoning Performance Report[/bold yellow]", style="yellow"))
     console.print()
 
-    table = Table(title="Agentic Token Consumption Overview", header_style="bold cyan", border_style="yellow")
+    table = Table(title="Chain-of-Thought Performance Overview", header_style="bold cyan", border_style="yellow")
     table.add_column("Scenario", style="bold", min_width=25)
     table.add_column("Steps", justify="right")
-    table.add_column("Billed Input", justify="right")
-    table.add_column("Billed Output", justify="right")
-    table.add_column("Total Billed", justify="right", style="bold yellow")
+    table.add_column("Verdict", justify="center")
+    table.add_column("Total Billed Tokens", justify="right", style="bold yellow")
     table.add_column("Unique Context Size", justify="right", style="cyan")
     table.add_column("Overhead Ratio", justify="right", style="bold red")
     table.add_column("Est. Cost (USD)", justify="right", style="green")
 
     for r in results:
         ratio_str = f"{r['overhead_factor']:.2f}x"
+        v_text, v_color = r["verdict"], r["verdict_color"]
+        formatted_verdict = f"[{v_color}]{v_text}[/{v_color}]"
         table.add_row(
             r["name"].split(":")[0],
             str(r["steps"]),
-            f"{r['cumulative_input']:,}",
-            f"{r['cumulative_output']:,}",
+            formatted_verdict,
             f"{r['total_billed']:,}",
             f"{r['final_unique_tokens']:,}",
             ratio_str,

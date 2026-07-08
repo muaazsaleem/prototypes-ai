@@ -50,14 +50,19 @@ python main.py
 
 ---
 
-## 📊 Demonstration Scenario
+## 📊 Demonstration Scenarios
 
-The script runs an unoptimized RAG scenario to demonstrate quadratic token accumulation:
+The script runs two distinct scenarios side-by-side to demonstrate the critical importance of Chain-of-Thought (CoT) / textual thoughts in complex reasoning:
 
-### Scenario: Raw/Bloated Payload (Unoptimized RAG)
-- **Task:** Calculate the population density for both India and China. Identify the country with the lower density, and calculate what its total GDP would be if its population increased to match the other country's density.
-- **Payloads:** Simulated tool responses are large, detailed paragraphs (~700 tokens each).
-- **Result:** Demonstrates how large RAG chunks compound quadratically, running up the token count exponentially across 6+ steps.
+### Scenario 1: Suppressed Thoughts (Disabled CoT / Fast Action)
+- **Task:** Calculate the population density for both India and China, identify the lower density country, and calculate its hypothetical GDP.
+- **Constraints:** The system prompt strictly forbids any textual thoughts, reasoning steps, or plans. Native API thoughts are also turned off.
+- **Why it struggles/fails:** Without an explicit "scratchpad" (text thoughts) to break down multi-step arithmetic, track variables, and formulate plans, the agent is forced to make immediate actions. It easily gets lost, calls incorrect tools, or fails to compute the correct math.
+
+### Scenario 2: Enabled Thoughts (Active CoT / Standard ReAct)
+- **Task:** Same reasoning task.
+- **Setup:** Standard ReAct setup. Textual thoughts are actively encouraged and carried forward verbatim in the conversation history as plain-text model responses.
+- **Why it succeeds:** Having a dedicated text scratchpad allows the model to methodically plan, summarize intermediate values, self-correct, and execute complex math flawlessly before taking actions.
 
 ---
 
