@@ -11,6 +11,14 @@ from google.genai import types
 # Initialize rich console
 console = Console()
 
+# Simulated file system
+SIMULATED_FILES = {
+    "report_2025.txt": {"size": "1.2 MB", "type": "Document", "description": "Annual security and performance report."},
+    "temp_cache_001.tmp": {"size": "45 KB", "type": "Temporary", "description": "Temporary cache file from previous session."},
+    "old_draft.bak": {"size": "120 KB", "type": "Backup", "description": "Backup of an old document draft from 2024."},
+    "system_config.json": {"size": "8 KB", "type": "Configuration", "description": "Important system settings."}
+}
+
 def get_client():
     """Returns a google-genai client or exits if API key is missing."""
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
@@ -24,10 +32,10 @@ def display_header():
     """Displays the application header."""
     console.print(
         Panel.fit(
-            "[bold yellow]HITL Content Refiner[/bold yellow]\n"
-            "[dim]A Human-in-the-loop prototype for iterative content creation with LLMs.[/dim]\n"
-            "[dim]Model: gemini-2.0-flash[/dim]",
-            border_style="yellow",
+            "[bold red]HITL Safe File Cleaner[/bold red]\n"
+            "[dim]A simplified Human-in-the-loop prototype demonstrating safe deletion.[/dim]\n"
+            "[dim]Model: gemini-2.5-flash[/dim]",
+            border_style="red",
         )
     )
     console.print()
@@ -100,42 +108,60 @@ def display_model_output(response_text):
 def run_hitl_session():
     """Main HITL loop using Function Calling (Tools)."""
     client = get_client()
-    model_id = "gemini-2.5-flash" # Updated to the requested 2.5-flash version
+    model_id = "gemini-2.5-flash"
     
-    # Explicit tool definition as a dictionary/schema
+    # Explicit tool definition with requested confirmation phrase
     tool_schema = {
         "function_declarations": [
             {
-                "name": "request_human_input",
-                "description": "Asks the human user a specific question to clarify details or get missing information.",
+                "name": "delete_file",
+                "description": "Deletes a file from the system. Invoke when you decide to take this action.",
                 "parameters": {
                     "type": "OBJECT",
                     "properties": {
-                        "question": {
+                        "filename": {
                             "type": "STRING",
-                            "description": "The specific question or clarification needed from the human."
+                            "description": "The name of the file to delete."
+                        },
+                        "reason": {
+                            "type": "STRING",
+                            "description": "The logical reason why this file should be deleted."
                         }
                     },
-                    "required": ["question"]
+                    "required": ["filename", "reason"]
                 }
             }
         ]
     }
     
+    # System instruction with requested confirmation phrase
     system_instruction = (
-        "You are a professional content architect. Your goal is to produce accurate, high-quality content.\n\n"
-        "STRICT PROTOCOL:\n"
-        "1. If you are missing ANY facts (names, dates, titles, etc.), you MUST call the 'request_human_input' tool. "
-        "Do not provide a draft with placeholders.\n"
-        "2. Once you have all the facts, provide the full content.\n"
-        "3. When finished, append 'FINAL_COMPLETE_DRAFT' to the end of your message."
+        "You are an automated file cleanup assistant. Your task is to process a list of files, "
+        "analyze which ones are temporary or obsolete, and delete them.\n\n"
+        "STRICT PROTOCOLS:\n"
+        "1. For each file, analyze whether it should be kept or deleted.\n"
+        "2. If you decide to delete a file, you MUST use the 'delete_file' tool. "
+        "Invoke when you decide to take this action.\n"
+        "3. Once you have processed all files, present a summary of what was kept and what was deleted."
     )
     
     display_header()
     
-    # Automated Task for demonstration
-    current_input = "Draft a formal Security Incident Report for a suspected database breach."
-    console.print(f"[bold cyan]Auto-starting with task:[/bold cyan] {current_input}\n")
+    # Display initial state of the simulated files
+    console.print("[bold yellow]Initial File System State:[/bold yellow]")
+    for name, info in SIMULATED_FILES.items():
+        console.print(f"- [cyan]{name}[/cyan]: {info['type']} ({info['size']}) - {info['description']}")
+    console.print()
+    
+    # Format the file list for the prompt
+    file_list_str = "\n".join(
+        [f"- {name}: {info['type']} ({info['size']}) - {info['description']}" for name, info in SIMULATED_FILES.items()]
+    )
+    
+    current_input = (
+        f"Please analyze and clean up the following simulated files. Identify obsolete, temporary, "
+        f"or backup files and delete them. Here are the files:\n\n{file_list_str}"
+    )
     
     # Initialize chat session with tools
     chat = client.chats.create(
@@ -150,11 +176,6 @@ def run_hitl_session():
     while True:
         console.print(Rule("[bold]AI Processing[/bold]", style="white"))
         
-        # Display history
-        history = chat.get_history()
-        if history:
-            display_model_input(history)
-        
         try:
             response = chat.send_message(current_input)
         except Exception as e:
@@ -164,38 +185,58 @@ def run_hitl_session():
         # Check for Tool Calls (Function Calls)
         function_calls = response.function_calls
         if function_calls:
+            tool_responses = []
             for call in function_calls:
-                if call.name == "request_human_input":
-                    question = call.args.get("question", "What info is needed?")
+                if call.name == "delete_file":
+                    filename = call.args.get("filename")
+                    reason = call.args.get("reason", "No reason provided.")
                     
-                    console.print(Rule("[bold yellow]Human Input Requested[/bold yellow]", style="yellow"))
-                    console.print(f"[bold cyan]AI Question:[/bold cyan] {question}")
+                    console.print(Rule("[bold yellow]Human Approval Requested[/bold yellow]", style="yellow"))
+                    console.print(f"[bold cyan]AI wishes to delete:[/bold cyan] [yellow]{filename}[/yellow]")
+                    console.print(f"[bold cyan]Reason:[/bold cyan] {reason}")
                     
-                    user_answer = console.input("\n[bold blue]> Your Answer: [/bold blue]").strip()
+                    user_answer = console.input("\n[bold blue]Approve deletion? (y/n / exit): [/bold blue]").strip().lower()
                     
-                    if user_answer.lower() == 'exit':
+                    if user_answer == 'exit':
                         console.print("[bold red]Session terminated.[/bold red]")
                         return
-
-                    # Return tool response
-                    current_input = types.Part.from_function_response(
-                        name="request_human_input",
-                        response={"result": user_answer}
+                    
+                    approved = user_answer in ('y', 'yes')
+                    if approved:
+                        if filename in SIMULATED_FILES:
+                            SIMULATED_FILES[filename]["deleted"] = True
+                            result = f"Success: File '{filename}' deleted."
+                            console.print(f"[bold green]File '{filename}' has been successfully deleted.[/bold green]\n")
+                        else:
+                            result = f"Error: File '{filename}' not found."
+                            console.print(f"[bold red]File '{filename}' not found.[/bold red]\n")
+                    else:
+                        result = f"Rejected: Human user refused deletion of '{filename}'."
+                        console.print(f"[bold red]Deletion of '{filename}' was rejected by the human user.[/bold red]\n")
+                    
+                    tool_responses.append(
+                        types.Part.from_function_response(
+                            name="delete_file",
+                            response={"result": result}
+                        )
                     )
+            
+            # Send the tool response(s) back to the model
+            current_input = tool_responses
             continue
 
-        # Handle text response
+        # Handle final text response
         content = response.text or "[No text provided]"
         display_model_output(content)
-        
-        if "FINAL_COMPLETE_DRAFT" in content.upper():
-            console.print(Rule("[bold green]Content Approved[/bold green]", style="green"))
-            break
-        
-        choice = console.input("\n[bold blue]> Feedback / Continue (or 'exit'): [/bold blue]").strip()
-        if choice.lower() == 'exit':
-            break
-        current_input = choice if choice else "Finalize the draft."
+        break
+
+    # Display final state of simulated files
+    console.print()
+    console.print(Rule("[bold green]Final Simulated File System Status[/bold green]", style="green"))
+    for name, info in SIMULATED_FILES.items():
+        status = "[bold red]DELETED[/bold red]" if info.get("deleted") else "[bold green]KEPT[/bold green]"
+        console.print(f"- [cyan]{name}[/cyan]: {status} ({info['type']})")
+    console.print()
 
 if __name__ == "__main__":
     try:

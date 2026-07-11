@@ -1,20 +1,16 @@
-# HITL Content Refiner Prototype
+# HITL Safe File Cleaner Prototype
 
-A simple Python-based Human-in-the-loop (HITL) prototype demonstrating iterative content refinement using the Google Gemini API (`google-genai`).
+A simplified Python-based Human-in-the-loop (HITL) prototype demonstrating a safe deletion workflow using the Google Gemini API (`google-genai`).
 
-## Why this is a Human-in-the-Loop example
+## Why this is a Human-in-the-Loop Deletion example
 
-This prototype follows the **"Agentic Tool-Based HITL"** pattern:
-1.  **AI Acts as an Agent:** The LLM is provided with a specific tool called `request_human_input`.
-2.  **Autonomous Decision to Consult:** The AI evaluates its own confidence. If it detects a gap in its knowledge, it triggers a **Tool Call** instead of generating text.
-3.  **Application Mediates:** The Python application intercepts the Tool Call, pauses execution, and presents the AI's question to the user.
-4.  **Structured Feedback:** The human's response is packaged as a `function_response` and sent back to the LLM.
-5.  **Seamless Integration:** The LLM receives the fact as a "tool result" and incorporates it naturally into the final output.
-
-This pattern is the industry standard for:
-- **AI Agents:** Allowing agents to "ask for help" when they hit a roadblock.
-- **Data Integrity:** Ensuring that critical facts are sourced from humans via a structured interface.
-- **Workflow Automation:** Building complex loops where the AI can conditionally branch based on human decisions.
+This prototype follows the **"Agentic Tool-Based HITL Deletion Verification"** pattern:
+1.  **AI Evaluates Files:** The LLM is provided with a simulated list of files (some important, some obsolete).
+2.  **Autonomous Decision to Delete:** The AI identifies temporary (`.tmp`) or backup (`.bak`) files as candidates for deletion.
+3.  **Strict Confirmation Protocol:** When deciding to take action, the LLM must invoke a specific tool (`delete_file`) which contains the instruction: `"Invoke when you decide to take this action."`
+4.  **Human Verification:** The Python application intercepts the deletion request, pauses execution, and presents the target file and the AI's logical reason to the human user for approval.
+5.  **State Synchronization:** Depending on human input (Yes/No), the file deletion is either executed or rejected, and the status is sent back to the LLM.
+6.  **Final Summary:** The LLM finishes processing and prints a final overview of files that were kept vs. deleted.
 
 ## Setup
 
@@ -36,6 +32,6 @@ This pattern is the industry standard for:
     ```
 
 ## Features
-- **Styled UI:** Uses the `rich` library for a professional-grade terminal interface.
-- **Stateful Chat:** Uses `client.chats.create` to maintain context across refinement cycles.
-- **System Instructions:** Anchors the LLM's persona as a communications expert.
+- **Clean Terminal UI:** Built with `rich` for elegant, readable console feedback.
+- **System Instruction & Tool Alignment:** Explicitly enforces safe deletion protocol with the exact phrase `"Invoke when you decide to take this action"` in both the system prompt and tool definition.
+- **Parallel Tool Support:** Built to handle multiple tool/deletion requests in a single turn.
