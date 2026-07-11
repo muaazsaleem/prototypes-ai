@@ -1,167 +1,231 @@
 
-import random
 import math
+import random
 
-class IsolationTree:
-    def __init__(self, left=None, right=None, split_attribute=None, split_value=None, size=0, is_external=False):
+# Define node classes for the Isolation Tree
+class IsolationTreeNode:
+    def __init__(self):
+        self.left = None
+        self.right = None
+        self.split_attribute_index = None # Use index instead of name
+        self.split_value = None
+        self.size = 0 # For external nodes
+
+class IsolationTreeExternalNode(IsolationTreeNode):
+    def __init__(self, size):
+        super().__init__()
+        self.size = size
+
+class IsolationTreeInternalNode(IsolationTreeNode):
+    def __init__(self, left, right, split_attribute_index, split_value):
+        super().__init__()
         self.left = left
         self.right = right
-        self.split_attribute = split_attribute # Index of the attribute
+        self.split_attribute_index = split_attribute_index
         self.split_value = split_value
-        self.size = size
-        self.is_external = is_external
 
-def c_factor(n):
-    """
-    Calculates the average path length of an unsuccessful search in a Binary Search Tree.
-    Used for path length normalization.
-    Equation 1 from the paper.
-    """
-    if n > 2:
-        return 2 * (math.log(n - 1) + 0.5772156649) - (2 * (n - 1) / n)
-    elif n == 2:
-        return 1
-    else: # n <= 1
-        return 0
+# Equation 1: c(n) - average path length of unsuccessful search in BST
+def c(n):
+    if n <= 1:
+        return 0.0
+    euler_constant = 0.5772156649
+    return 2 * (math.log(n - 1) + euler_constant) - (2 * (n - 1) / n)
 
-def path_length(x, tree, current_path_length):
-    """
-    Calculates the path length for a single instance x in a given IsolationTree.
-    Algorithm 3 from the paper.
-    x is a list/tuple representing an instance.
-    """
-    if tree.is_external:
-        return current_path_length + c_factor(tree.size)
+# Algorithm 3: PathLength (x, T, e)
+def path_length(x, T, e):
+    if isinstance(T, IsolationTreeExternalNode):
+        return e + c(T.size)
     
-    a = tree.split_attribute
-    if x[a] < tree.split_value:
-        return path_length(x, tree.left, current_path_length + 1)
+    # x is expected to be a list of numerical values
+    # T.split_attribute_index is the index of the attribute to split on
+    if T.split_attribute_index >= len(x):
+        raise ValueError(f"Split attribute index {T.split_attribute_index} out of bounds for instance with {len(x)} features.")
+
+    if x[T.split_attribute_index] < T.split_value:
+        return path_length(x, T.left, e + 1)
     else:
-        return path_length(x, tree.right, current_path_length + 1)
+        return path_length(x, T.right, e + 1)
 
-def iTree(X, current_height, height_limit):
-    """
-    Builds a single Isolation Tree.
-    Algorithm 2 from the paper.
-    X is a list of lists/tuples.
-    """
-    if current_height >= height_limit or len(X) <= 1:
-        return IsolationTree(size=len(X), is_external=True)
+# Algorithm 2: iTree (X, e, l)
+# X is expected to be a list of lists (instances)
+def i_tree(X, e, l):
+    if e >= l or len(X) <= 1:
+        return IsolationTreeExternalNode(size=len(X))
     
-    num_attributes = len(X[0]) # Assuming all instances have the same number of attributes
+    # Check if all data in X have the same values
+    # This is more robustly checked by comparing each instance to the first one.
+    if len(X) > 0:
+        first_instance = X[0]
+        all_same = True
+        for i in range(1, len(X)):
+            if X[i] != first_instance:
+                all_same = False
+                break
+        if all_same:
+            return IsolationTreeExternalNode(size=len(X))
+
+    num_features = len(X[0]) # Assuming all instances have the same number of features
+    q = random.randrange(num_features) # Randomly select an attribute index
     
-    # Randomly select an attribute q (index)
-    q = random.randint(0, num_attributes - 1)
-    
-    # Get min and max values for the selected attribute
-    min_val = float('inf')
-    max_val = float('-inf')
+    # Find min and max values for the selected attribute
+    min_val = X[0][q]
+    max_val = X[0][q]
     for instance in X:
         if instance[q] < min_val:
             min_val = instance[q]
         if instance[q] > max_val:
             max_val = instance[q]
 
-    # Handle cases where all values are the same for the selected attribute
+    # If min_val and max_val are the same, no split is possible for this attribute
     if min_val == max_val:
-        return IsolationTree(size=len(X), is_external=True)
-        
+        return IsolationTreeExternalNode(size=len(X))
+
     p = random.uniform(min_val, max_val)
-    
-    # Filter data into left and right branches
-    Xl = [instance for instance in X if instance[q] < p]
-    Xr = [instance for instance in X if instance[q] >= p]
 
-    # Handle cases where one side is empty after split.
-    # This means the split was ineffective for this data subset.
-    # In such cases, we continue building the tree with the non-empty subset.
+    Xl = []
+    Xr = []
+    for instance in X:
+        if instance[q] < p:
+            Xl.append(instance)
+        else:
+            Xr.append(instance)
+
     if len(Xl) == 0:
-        return iTree(Xr, current_height + 1, height_limit)
+        return i_tree(Xr, e + 1, l)
     if len(Xr) == 0:
-        return iTree(Xl, current_height + 1, height_limit)
-    
-    left_child = iTree(Xl, current_height + 1, height_limit)
-    right_child = iTree(Xr, current_height + 1, height_limit)
-    
-    return IsolationTree(left=left_child, right=right_child, 
-                           split_attribute=q, split_value=p, 
-                           is_external=False)
+        return i_tree(Xl, e + 1, l)
 
-def iForest(X, num_trees, subsample_size):
-    """
-    Builds an Isolation Forest.
-    Algorithm 1 from the paper.
-    X is a list of lists/tuples.
-    """
+    left_child = i_tree(Xl, e + 1, l)
+    right_child = i_tree(Xr, e + 1, l)
+    
+    return IsolationTreeInternalNode(left_child, right_child, q, p)
+
+# Algorithm 1: iForest (X, t, psi)
+# X is expected to be a list of lists (instances)
+def i_forest(X, t, psi):
     forest = []
-    # height_limit l = ceiling(log2(subsample_size))
-    height_limit = math.ceil(math.log(subsample_size, 2))
-    
-    data_size = len(X)
+    l = int(math.ceil(math.log2(psi))) if psi > 1 else 1
 
-    for _ in range(num_trees):
-        # X' <- sample(X, psi)
-        # Randomly sample without replacement
-        X_prime = random.sample(X, subsample_size)
-        tree = iTree(X_prime, 0, height_limit)
-        forest.append(tree)
+    for _ in range(t):
+        # Sample X' from X with size psi
+        if len(X) <= psi:
+            X_prime = list(X) # Use the entire dataset if smaller or equal to psi
+        else:
+            X_prime = random.sample(X, psi)
         
+        tree = i_tree(X_prime, 0, l)
+        forest.append(tree)
     return forest
 
-def calculate_anomaly_scores(X, forest, subsample_size):
-    """
-    Calculates anomaly scores for each instance in X using the given Isolation Forest.
-    Equation 2 from the paper.
-    X is a list of lists/tuples.
-    """
-    anomaly_scores = []
-    # c(n) is for the average path length of *subsample_size* items
-    # so use subsample_size for the c_factor calculation, not the full dataset size.
-    c_n = c_factor(subsample_size)
+# Equation 2: Anomaly Score s(x, n)
+def anomaly_score(E_h_x, n_in_c):
+    if n_in_c <= 1:
+        return 0.5 
     
-    for x in X:
-        path_lengths = []
-        for tree in forest:
-            path_lengths.append(path_length(x, tree, 0))
-        
-        # E(h(x)) is the average of h(x) from a collection of isolation trees
-        avg_path_length = sum(path_lengths) / len(path_lengths)
-        
-        # s(x, n) = 2^(-E(h(x))/c(n))
-        score = 2 ** (-avg_path_length / c_n)
-        anomaly_scores.append(score)
-        
-    return anomaly_scores
+    denominator = c(n_in_c)
+    if denominator == 0:
+        return 0.5
 
-# Example Usage (for testing purposes)
-if __name__ == "__main__":
-    # Generate some sample data
-    random.seed(42)
-    data = [[random.uniform(0, 10), random.uniform(0, 10)] for _ in range(100)]
-    # Add a few anomalies
-    data.extend([[1.0, 1.0], [9.0, 9.0], [0.0, 5.0], [5.0, 0.0]])
+    return 2 ** (-E_h_x / denominator)
 
-    num_trees = 100
-    subsample_size = 32
+# Main Isolation Forest class
+class IsolationForest:
+    def __init__(self, n_estimators=100, max_samples=256, random_state=None):
+        self.n_estimators = n_estimators
+        self.max_samples = max_samples
+        self.forest = []
+        self.num_features = 0
+        if random_state is not None:
+            random.seed(random_state)
 
-    # Train the iForest
-    forest = iForest(data, num_trees, subsample_size)
+    def fit(self, X):
+        # X is expected to be a list of lists
+        if not X: # Handle empty input
+            raise ValueError("Input data X cannot be empty.")
+        if not isinstance(X[0], list):
+             raise ValueError("Input data X must be a list of lists.")
 
-    # Calculate anomaly scores
-    scores = calculate_anomaly_scores(data, forest, subsample_size)
+        self.num_features = len(X[0])
+        self.forest = i_forest(X, self.n_estimators, self.max_samples)
 
-    print("Anomaly Scores (first 10, then anomalies):")
-    print(scores[:10])
-    print(scores[100:])
+    def predict(self, X):
+        # X is expected to be a list of lists
+        if not X: # Handle empty input
+            return []
+        if not isinstance(X[0], list):
+             raise ValueError("Input data X must be a list of lists.")
+        if len(X[0]) != self.num_features:
+            raise ValueError("Test data instances must have the same number of features as training data.")
 
-    # Identify top anomalies
-    # Create a list of (score, index) tuples for sorting
-    indexed_scores = [(scores[i], i) for i in range(len(scores))]
-    indexed_scores.sort(key=lambda x: x[0], reverse=True)
+        scores = []
+        for instance in X:
+            avg_path_length = 0
+            for tree in self.forest:
+                avg_path_length += path_length(instance, tree, 0)
+            avg_path_length /= self.n_estimators
+            scores.append(anomaly_score(avg_path_length, self.max_samples))
 
-    print('\nTop 5 anomalies (indices and scores):')
-    for i in range(5):
-        score, original_index = indexed_scores[i]
-        print(f"Index: {original_index}, Score: {score:.4f}, Data: {data[original_index]}")
+        return scores
 
-    # Expected behavior: anomalies (indices 100, 101, 102, 103) should have higher scores (closer to 1)
+# Test cases
+if __name__ == '__main__':
+    # 1. Simple 2D data
+    print("Testing with simple 2D data...")
+    # Normal data points (cluster around (0,0))
+    X_normal = [[random.gauss(0, 0.1), random.gauss(0, 0.1)] for _ in range(100)]
+    # Anomaly data points (far from the cluster)
+    X_anomaly = [[5, 5], [-5, -5], [0.1, 0.1]]
+
+    X_train = X_normal + X_anomaly
+    random.shuffle(X_train) # Shuffle to mix normal and anomalies
+
+    # Train Isolation Forest
+    iforest = IsolationForest(n_estimators=10, max_samples=32, random_state=42)
+    iforest.fit(X_train)
+
+    # Predict anomaly scores for training data
+    scores_train = iforest.predict(X_train)
+    
+    # Separate scores for original anomalies and normal points for assertion
+    scores_normal = []
+    scores_anomalies = []
+    for i, x in enumerate(X_train):
+        if x in X_normal:
+            scores_normal.append(scores_train[i])
+        elif x in X_anomaly:
+            scores_anomalies.append(scores_train[i])
+
+    print(f"Min score: {min(scores_train):.4f}, Max score: {max(scores_train):.4f}")
+    
+    # Expect anomalies to have higher scores (closer to 1)
+    print("Scores for anomalies (expected high):", [f'{s:.4f}' for s in scores_anomalies])
+    print("Average score for normal points (expected lower):", f'{sum(scores_normal)/len(scores_normal):.4f}')
+
+    # Check if anomaly scores are generally higher (allowing for some randomness)
+    # A strict assertion might fail due to randomness, so we can check if the average anomaly score is higher.
+    assert sum(scores_anomalies) / len(scores_anomalies) > sum(scores_normal) / len(scores_normal), "Anomalies should have higher average scores"
+    print("Assertion passed: Anomalies generally have higher average scores.")
+
+    # 2. Test with all identical data points (should result in external nodes immediately)
+    print("\nTesting with all identical data points...")
+    X_identical = [[1, 2], [1, 2], [1, 2], [1, 2]]
+    iforest_identical = IsolationForest(n_estimators=5, max_samples=4, random_state=42)
+    iforest_identical.fit(X_identical)
+    scores_identical = iforest_identical.predict(X_identical)
+    print("Scores for identical data points (expected around 0.5):")
+    print([f'{s:.4f}' for s in scores_identical])
+    # All scores should be very close to 0.5
+    for score in scores_identical:
+        assert abs(score - 0.5) < 0.1, "Scores for identical data should be around 0.5"
+    print("Assertion passed: Scores for identical data are around 0.5.")
+
+    # 3. Test with small dataset (len(X) < max_samples)
+    print("\nTesting with small dataset (len(X) < max_samples)...")
+    X_small = [[random.random(), random.random(), random.random()] for _ in range(5)]
+    iforest_small = IsolationForest(n_estimators=5, max_samples=10, random_state=42)
+    iforest_small.fit(X_small)
+    scores_small = iforest_small.predict(X_small)
+    print("Scores for small dataset:")
+    print([f'{s:.4f}' for s in scores_small])
+    print("\nAll tests completed successfully.")
+

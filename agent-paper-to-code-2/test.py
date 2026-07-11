@@ -221,3 +221,76 @@ class TestDispatchChain:
         )
         assert done3
         assert "add" in code
+
+
+# ---------------------------------------------------------------------------
+# Visual display / Printing tests
+# ---------------------------------------------------------------------------
+
+class TestPrintModelInput:
+    def test_print_model_input_uses_dots(self):
+        from react_loop import _print_model_input, types
+        from rich.console import Console
+        import react_loop
+        
+        # Capture stdout using rich's Console with a record=True
+        test_console = Console(record=True, width=100)
+        # Temporarily mock the global console in react_loop
+        old_console = react_loop.console
+        react_loop.console = test_console
+        
+        try:
+            _print_model_input(
+                system_prompt="My long system prompt",
+                messages=[
+                    types.Content(
+                        role="user",
+                        parts=[types.Part(text="hello")]
+                    )
+                ]
+            )
+            # Retrieve output
+            output = test_console.export_text()
+            # Verify system prompt is not fully printed, but '...' is printed
+            assert "My long system prompt" not in output
+            assert "..." in output
+            assert "SYSTEM" in output
+            assert "USER" in output
+            assert "hello" in output
+        finally:
+            react_loop.console = old_console
+
+    def test_print_model_input_only_prints_last_message(self):
+        from react_loop import _print_model_input, types
+        from rich.console import Console
+        import react_loop
+        
+        test_console = Console(record=True, width=100)
+        old_console = react_loop.console
+        react_loop.console = test_console
+        
+        try:
+            _print_model_input(
+                system_prompt="My long system prompt",
+                messages=[
+                    types.Content(
+                        role="user",
+                        parts=[types.Part(text="message 1")]
+                    ),
+                    types.Content(
+                        role="model",
+                        parts=[types.Part(text="message 2")]
+                    ),
+                    types.Content(
+                        role="user",
+                        parts=[types.Part(text="message 3")]
+                    )
+                ]
+            )
+            output = test_console.export_text()
+            assert "message 1" not in output
+            assert "message 2" not in output
+            assert "message 3" in output
+        finally:
+            react_loop.console = old_console
+

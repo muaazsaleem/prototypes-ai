@@ -32,7 +32,7 @@ from tools import TOOL_DEFINITIONS, dispatch_tool
 console = Console()
 
 # Maximum ReAct iterations before we force a finish
-MAX_STEPS = 12
+MAX_STEPS = 20
 MODEL = "gemini-2.5-flash"
 
 
@@ -91,11 +91,11 @@ def _print_model_input(system_prompt: str, messages: list[types.Content]) -> Non
     
     # System Instruction
     indent = " " * 8
-    wrapped = textwrap.fill(system_prompt, width=82, subsequent_indent=indent)
+    wrapped = textwrap.fill("...", width=82, subsequent_indent=indent)
     input_elements.append(Text.assemble(("SYSTEM: ", "dim"), (wrapped, "dim")))
     input_elements.append(Rule(style="bright_black"))
 
-    for msg in messages:
+    for msg in messages[-1:]:
         role = msg.role or "user"
         for part in msg.parts:
             content = ""
@@ -193,6 +193,17 @@ def run(state: AgentState) -> str:
     
     gemini_tools = _get_gemini_tools()
     system_instruction = _system_prompt(state.paper_text, state.output_path)
+
+    # Print the system prompt once
+    console.print(
+        Panel(
+            system_instruction,
+            title="[bold bright_black]System Prompt[/bold bright_black]",
+            border_style="bright_black",
+            padding=(1, 2),
+        )
+    )
+    console.print()
 
     # Initial user request
     user_content = types.Content(

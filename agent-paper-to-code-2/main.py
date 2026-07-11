@@ -40,7 +40,7 @@ def main() -> None:
     parser.add_argument(
         "--max-steps",
         type=int,
-        default=12,
+        default=20,
         help="Maximum ReAct iterations (default: 12).",
     )
     args = parser.parse_args()
