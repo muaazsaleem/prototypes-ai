@@ -35,6 +35,8 @@ console = Console()
 MAX_STEPS = 12
 MODEL = "gemini-2.5-flash"
 
+_system_prompt_printed = False
+
 
 @dataclass
 class AgentState:
@@ -84,15 +86,23 @@ def _print_step_header(step: int) -> None:
 
 
 def _print_model_input(system_prompt: str, messages: list[types.Content]) -> None:
+    global _system_prompt_printed
     input_elements = []
     
     # System Instruction
     indent = " " * 8
-    wrapped = textwrap.fill(system_prompt, width=82, subsequent_indent=indent)
+    if _system_prompt_printed:
+        wrapped = "..."
+    else:
+        wrapped = textwrap.fill(system_prompt, width=82, subsequent_indent=indent)
+        _system_prompt_printed = True
+
     input_elements.append(Text.assemble(("SYSTEM: ", "dim"), (wrapped, "dim")))
     input_elements.append(Rule(style="bright_black"))
 
-    for msg in messages:
+    # Only print the newest message to avoid listing the full trail every turn
+    messages_to_print = [messages[-1]] if messages else []
+    for msg in messages_to_print:
         role = msg.role or "user"
         for part in msg.parts:
             content = ""
@@ -185,6 +195,9 @@ def _get_gemini_tools() -> list[types.Tool]:
 
 def run(state: AgentState) -> str:
     """Execute the ReAct loop using the new google-genai SDK."""
+    global _system_prompt_printed
+    _system_prompt_printed = False
+
     api_key = os.environ.get("GEMINI_API_KEY")
     client = genai.Client(api_key=api_key)
     
