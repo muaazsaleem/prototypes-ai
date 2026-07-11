@@ -50,17 +50,12 @@ python main.py
 
 ---
 
-## 📊 Demonstration Scenarios
+## 📊 Demonstration Scenario
 
-The script runs two distinct scenarios side-by-side to demonstrate the critical importance of Chain-of-Thought (CoT) / textual thoughts in complex reasoning:
+The script runs a Standard ReAct Agent demonstration with Active Chain-of-Thought (CoT) enabled:
 
-### Scenario 1: Suppressed Thoughts (Disabled CoT / Fast Action)
+### Standard ReAct with Active CoT (Enabled Thoughts)
 - **Task:** Calculate the population density for both India and China, identify the lower density country, and calculate its hypothetical GDP.
-- **Constraints:** The system prompt strictly forbids any textual thoughts, reasoning steps, or plans. Native API thoughts are also turned off.
-- **Why it struggles/fails:** Without an explicit "scratchpad" (text thoughts) to break down multi-step arithmetic, track variables, and formulate plans, the agent is forced to make immediate actions. It easily gets lost, calls incorrect tools, or fails to compute the correct math.
-
-### Scenario 2: Enabled Thoughts (Active CoT / Standard ReAct)
-- **Task:** Same reasoning task.
 - **Setup:** Standard ReAct setup. Textual thoughts are actively encouraged and carried forward verbatim in the conversation history as plain-text model responses.
 - **Why it succeeds:** Having a dedicated text scratchpad allows the model to methodically plan, summarize intermediate values, self-correct, and execute complex math flawlessly before taking actions.
 
