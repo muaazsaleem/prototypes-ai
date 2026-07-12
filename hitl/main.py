@@ -19,6 +19,9 @@ SIMULATED_FILES = {
     "system_config.json": {"size": "8 KB", "type": "Configuration", "description": "Important system settings."}
 }
 
+# Global state to keep track of human approvals in the current session
+APPROVED_FILES = set()
+
 def get_client():
     """Returns a google-genai client or exits if API key is missing."""
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
@@ -39,49 +42,6 @@ def display_header():
         )
     )
     console.print()
-
-def display_model_input(history):
-    """Displays the chat history in a styled panel, skipping tool internal parts."""
-    if not history:
-        return
-        
-    input_elements = []
-    for msg in history:
-        role = msg.role
-        # Filter for text parts only to avoid showing tool-call metadata in the UI
-        content_parts = [part.text for part in msg.parts if part.text]
-        if not content_parts:
-            continue
-            
-        content = "".join(content_parts)
-        
-        if role == "user":
-            label_style = "bold blue"
-            content_style = "blue"
-        elif role == "model":
-            label_style = "bold green"
-            content_style = "green"
-        else:
-            label_style = "dim"
-            content_style = "dim"
-        
-        indent = " " * (len(role) + 2)
-        wrapped = textwrap.fill(content, width=82, subsequent_indent=indent)
-        
-        input_elements.append(Text.assemble((f"{role.upper()}: ", label_style), (wrapped, content_style)))
-        input_elements.append(Rule(style="bright_black"))
-
-    if input_elements:
-        input_elements.pop() # Remove trailing rule
-        console.print(
-            Panel(
-                Group(*input_elements),
-                title="[bold bright_black]Conversation History[/bold bright_black]",
-                border_style="bright_black",
-                padding=(1, 2),
-            )
-        )
-        console.print()
 
 def display_model_output(response_text):
     """Displays the model's response in a styled panel."""
@@ -105,46 +65,73 @@ def display_model_output(response_text):
     )
     console.print()
 
+def request_human_approval(action: str, filename: str, reason: str) -> str:
+    """Requests approval from a human operator before taking critical actions.
+
+    You MUST invoke this tool and receive an 'Approved' response before you can delete any file.
+
+    Args:
+        action: The action that requires human approval (e.g., 'delete_file').
+        filename: The file involved in the action.
+        reason: The logical reason why this action is necessary.
+    """
+    console.print(Rule("[bold yellow]Human Approval Requested[/bold yellow]", style="yellow"))
+    console.print(f"[bold cyan]AI requests approval to perform action:[/bold cyan] [yellow]{action}[/yellow]")
+    console.print(f"[bold cyan]Target File:[/bold cyan] [yellow]{filename}[/yellow]")
+    console.print(f"[bold cyan]Reason:[/bold cyan] {reason}")
+    
+    user_answer = console.input("\n[bold blue]Approve this request? (y/n / exit): [/bold blue]").strip().lower()
+    
+    if user_answer == 'exit':
+        console.print("[bold red]Session terminated.[/bold red]")
+        sys.exit(0)
+        
+    approved = user_answer in ('y', 'yes')
+    if approved:
+        APPROVED_FILES.add(filename)
+        console.print(f"[bold green]Action approved by human.[/bold green]\n")
+        return "Approved: The human operator has approved this action. You may now proceed to execute it."
+    else:
+        console.print(f"[bold red]Action rejected by human.[/bold red]\n")
+        return "Rejected: The human operator has denied this action. You must not execute it."
+
+def delete_file(filename: str, reason: str) -> str:
+    """Deletes a file from the system.
+
+    CRITICAL: You MUST ask for and obtain human approval via the 'request_human_approval' tool
+    BEFORE calling this tool. You are strictly forbidden from calling delete_file
+    unless the human operator has already explicitly approved the deletion.
+
+    Args:
+        filename: The name of the file to delete.
+        reason: The logical reason why this file should be deleted.
+    """
+    if filename in APPROVED_FILES:
+        if filename in SIMULATED_FILES:
+            SIMULATED_FILES[filename]["deleted"] = True
+            console.print(f"[bold green]File '{filename}' has been successfully deleted.[/bold green]\n")
+            return f"Success: File '{filename}' deleted."
+        else:
+            console.print(f"[bold red]File '{filename}' not found.[/bold red]\n")
+            return f"Error: File '{filename}' not found."
+    else:
+        console.print(f"[bold red]Attempted to delete '{filename}' without prior human approval![/bold red]\n")
+        return (
+            f"Error: Deletion rejected. You did not obtain explicit human approval for "
+            f"deleting '{filename}' before calling delete_file. You must first call "
+            f"request_human_approval and obtain approval."
+        )
+
 def run_hitl_session():
-    """Main HITL loop using Function Calling (Tools)."""
+    """Main HITL loop using Automatic Function Calling (Tools)."""
     client = get_client()
     model_id = "gemini-2.5-flash"
     
-    # Explicit tool definition with requested confirmation phrase
-    tool_schema = {
-        "function_declarations": [
-            {
-                "name": "delete_file",
-                "description": "Deletes a file from the system. Invoke when you decide to take this action.",
-                "parameters": {
-                    "type": "OBJECT",
-                    "properties": {
-                        "filename": {
-                            "type": "STRING",
-                            "description": "The name of the file to delete."
-                        },
-                        "reason": {
-                            "type": "STRING",
-                            "description": "The logical reason why this file should be deleted."
-                        }
-                    },
-                    "required": ["filename", "reason"]
-                }
-            }
-        ]
-    }
-    
-    # System instruction with requested confirmation phrase
-    system_instruction = (
-        "You are an automated file cleanup assistant. Your task is to process a list of files, "
-        "analyze which ones are temporary or obsolete, and delete them.\n\n"
-        "STRICT PROTOCOLS:\n"
-        "1. For each file, analyze whether it should be kept or deleted.\n"
-        "2. If you decide to delete a file, you MUST use the 'delete_file' tool. "
-        "Invoke when you decide to take this action.\n"
-        "3. Once you have processed all files, present a summary of what was kept and what was deleted."
-    )
-    
+    # Reset local state
+    APPROVED_FILES.clear()
+    for name in SIMULATED_FILES:
+        SIMULATED_FILES[name].pop("deleted", None)
+        
     display_header()
     
     # Display initial state of the simulated files
@@ -163,73 +150,35 @@ def run_hitl_session():
         f"or backup files and delete them. Here are the files:\n\n{file_list_str}"
     )
     
-    # Initialize chat session with tools
+    system_instruction = (
+        "You are an automated file cleanup assistant. Your task is to process a list of files, "
+        "analyze which ones are temporary or obsolete, and delete them.\n\n"
+        "STRICT PROTOCOLS:\n"
+        "1. For each file, analyze whether it should be kept or deleted.\n"
+        "2. If you decide to delete a file, you MUST first request human approval using the 'request_human_approval' tool.\n"
+        "3. Only if the human operator explicitly approves the request (returns 'Approved...'), you may proceed to "
+        "call the 'delete_file' tool to delete that specific file. Deleting a file without first obtaining human approval is strictly forbidden.\n"
+        "4. Once you have processed all files, present a summary of what was kept and what was deleted."
+    )
+    
+    # Initialize chat session with Python functions as tools
     chat = client.chats.create(
         model=model_id,
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
-            tools=[tool_schema],
+            tools=[request_human_approval, delete_file],
             temperature=0.0,
         )
     )
     
-    while True:
-        console.print(Rule("[bold]AI Processing[/bold]", style="white"))
-        
-        try:
-            response = chat.send_message(current_input)
-        except Exception as e:
-            console.print(f"[bold red]API Error:[/bold red] {e}")
-            break
-
-        # Check for Tool Calls (Function Calls)
-        function_calls = response.function_calls
-        if function_calls:
-            tool_responses = []
-            for call in function_calls:
-                if call.name == "delete_file":
-                    filename = call.args.get("filename")
-                    reason = call.args.get("reason", "No reason provided.")
-                    
-                    console.print(Rule("[bold yellow]Human Approval Requested[/bold yellow]", style="yellow"))
-                    console.print(f"[bold cyan]AI wishes to delete:[/bold cyan] [yellow]{filename}[/yellow]")
-                    console.print(f"[bold cyan]Reason:[/bold cyan] {reason}")
-                    
-                    user_answer = console.input("\n[bold blue]Approve deletion? (y/n / exit): [/bold blue]").strip().lower()
-                    
-                    if user_answer == 'exit':
-                        console.print("[bold red]Session terminated.[/bold red]")
-                        return
-                    
-                    approved = user_answer in ('y', 'yes')
-                    if approved:
-                        if filename in SIMULATED_FILES:
-                            SIMULATED_FILES[filename]["deleted"] = True
-                            result = f"Success: File '{filename}' deleted."
-                            console.print(f"[bold green]File '{filename}' has been successfully deleted.[/bold green]\n")
-                        else:
-                            result = f"Error: File '{filename}' not found."
-                            console.print(f"[bold red]File '{filename}' not found.[/bold red]\n")
-                    else:
-                        result = f"Rejected: Human user refused deletion of '{filename}'."
-                        console.print(f"[bold red]Deletion of '{filename}' was rejected by the human user.[/bold red]\n")
-                    
-                    tool_responses.append(
-                        types.Part.from_function_response(
-                            name="delete_file",
-                            response={"result": result}
-                        )
-                    )
-            
-            # Send the tool response(s) back to the model
-            current_input = tool_responses
-            continue
-
-        # Handle final text response
+    console.print(Rule("[bold]AI Processing[/bold]", style="white"))
+    try:
+        response = chat.send_message(current_input)
         content = response.text or "[No text provided]"
         display_model_output(content)
-        break
-
+    except Exception as e:
+        console.print(f"[bold red]API Error:[/bold red] {e}")
+        
     # Display final state of simulated files
     console.print()
     console.print(Rule("[bold green]Final Simulated File System Status[/bold green]", style="green"))
