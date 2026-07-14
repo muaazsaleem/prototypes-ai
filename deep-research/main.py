@@ -4,7 +4,7 @@ import os
 import sys
 import time
 import textwrap
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from pydantic import BaseModel, Field
 
 from google import genai
@@ -72,7 +72,8 @@ async def generate_plan(client: genai.Client, topic: str) -> Tuple[ResearchPlan,
     console.print(f"  [green]✓[/green] [bold yellow]Lead Planner Agent[/bold yellow] completed strategy in [dim]{elapsed:.1f}s[/dim]")
     
     # Parse the response using Pydantic
-    plan = ResearchPlan.model_validate_json(response.text)
+    response_text = response.text or "{}"
+    plan = ResearchPlan.model_validate_json(response_text)
     return plan, elapsed
 
 
@@ -127,7 +128,7 @@ async def run_research_task(client: genai.Client, subtask: ResearchSubTask, task
     return {
         "title": subtask.title,
         "agent_type": subtask.agent_type,
-        "content": response.text,
+        "content": response.text or "",
         "elapsed": elapsed
     }
 
@@ -172,7 +173,7 @@ async def run_critic(client: genai.Client, topic: str, subtask_reports: List[Dic
     response = await asyncio.to_thread(call_gemini)
     elapsed = time.time() - start_time
     console.print(f"  [green]✓[/green] [bold red]Research Critic Agent[/bold red] completed review in [dim]{elapsed:.1f}s[/dim]")
-    return response.text, elapsed
+    return response.text or "", elapsed
 
 
 async def run_synthesis(client: genai.Client, topic: str, subtask_reports: List[Dict[str, Any]], critique: str) -> Tuple[str, float]:
@@ -218,7 +219,7 @@ async def run_synthesis(client: genai.Client, topic: str, subtask_reports: List[
     response = await asyncio.to_thread(call_gemini)
     elapsed = time.time() - start_time
     console.print(f"  [green]✓[/green] [bold green]Lead Synthesizer Agent[/bold green] completed master compilation in [dim]{elapsed:.1f}s[/dim]")
-    return response.text, elapsed
+    return response.text or "", elapsed
 
 
 # ---------------------------------------------------------------------------
@@ -273,8 +274,12 @@ def display_orchestration_flow():
     console.print()
 
 
-def print_chat_block(agent_name: str, prompt: str, response: str, color_theme: str = "bright_black"):
+def print_chat_block(agent_name: str, prompt: str, response: Optional[str], color_theme: str = "bright_black"):
     """Displays prompt and model response inside a grey 'chat box' block."""
+    if prompt is None:
+        prompt = ""
+    if response is None:
+        response = ""
     input_elements = [
         Text.assemble(("ROLE: ", "bold blue"), (f"{agent_name.upper()}\n", "blue")),
         Text.assemble(("PROMPT SENT: ", "bold blue"), (textwrap.fill(prompt, width=82, subsequent_indent="             "), "blue"))

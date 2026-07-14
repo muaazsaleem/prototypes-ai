@@ -1,4 +1,0 @@
-Fetch the top 10 Hacker News posts and the top 5 trending GitHub repositories. 
-Summarise the Hacker News posts. Summarise the GitHub repos. 
-Combine both summaries into a unified tech digest. 
-Translate the digest to Spanish.

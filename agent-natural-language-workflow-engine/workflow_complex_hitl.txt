@@ -1,6 +1,0 @@
-In parallel, use the Hacker News MCP to fetch the top 5 stories about 'AI Agents' 
-and use the GitHub MCP to fetch trending repositories related to 'Agents'. 
-Summarise all the fetched data into a single Markdown draft report. 
-Next, trigger a Human-in-the-Loop (HITL) approval step via Temporal to have a human review the draft. 
-Wait for the human approval to complete. 
-Finally, once approved, use the Slack MCP to publish the final report to the #engineering channel.
