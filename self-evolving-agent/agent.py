@@ -15,8 +15,9 @@ from rich.text import Text
 # Initialize the rich console
 console = Console()
 
-SYSTEM_INSTRUCTION = """
-You are a highly capable Self-Evolving AI Agent. Your primary objective is to solve the user's request.
+SYSTEM_INSTRUCTION_LONG_TERM = """
+You are a highly capable Self-Evolving AI Agent operating in LONG-TERM TOOL REGISTRATION mode.
+Your primary objective is to solve the user's request.
 You have access to a small set of pre-defined tools.
 If you realize you need a tool that you do not currently have (such as executing shell commands, doing file system operations, compiling code, etc.), you have a special meta-tool called `create_and_register_new_tool`.
 
@@ -34,19 +35,40 @@ Guidelines for creating new tools:
 Be autonomous, professional, and clear in your reasoning.
 """
 
+SYSTEM_INSTRUCTION_ONE_TIME = """
+You are a highly capable Self-Evolving AI Agent operating in ONE-TIME SCRIPT EXECUTION mode.
+Your primary objective is to solve the user's request.
+You have access to a small set of pre-defined tools.
+If you realize you need a tool or a capability that you do not currently have (such as executing shell commands, doing complex file system operations, gathering system statistics, etc.), you have a special tool called `execute_one_time_script`.
+
+Guidelines for executing one-time scripts:
+1. You write a self-contained, complete Python script that performs the desired actions and prints the final output or findings to standard output.
+2. Your script will be executed once in a clean environment, and its stdout/stderr will be returned to you.
+3. Use this tool to run arbitrary logic or bash commands (using `subprocess` inside Python) to solve the specific request directly.
+4. Since this script runs once and is not registered as a reusable tool with its own API, do not worry about standard function structures or parameter lists—just write Python code that executes top-to-bottom and prints the information the user needs.
+5. Once you receive the output of your script, synthesize and present your final answer.
+
+Be autonomous, professional, and clear in your reasoning.
+"""
+
 class SelfEvolvingAgent:
-    def __init__(self):
+    def __init__(self, mode: str = "long_term"):
         # Initialize the official Google Gen AI Client
         # Automatically picks up GEMINI_API_KEY from environment
         self.client = genai.Client()
         self.model_id = "gemini-2.5-flash"
+        self.mode = mode
         
         # We start with some pre-defined tools
         self.active_tools = {
             "get_current_time": self.get_current_time,
             "fetch_webpage_content": self.fetch_webpage_content,
-            "create_and_register_new_tool": self.create_and_register_new_tool
         }
+        
+        if mode == "long_term":
+            self.active_tools["create_and_register_new_tool"] = self.create_and_register_new_tool
+        else:
+            self.active_tools["execute_one_time_script"] = self.execute_one_time_script
         
         # Conversation history stored as types.Content objects
         self.history = []
@@ -84,6 +106,55 @@ class SelfEvolvingAgent:
             return response.text[:1000]
         except Exception as e:
             return f"Error fetching {url}: {str(e)}"
+            
+    def execute_one_time_script(self, code: str, description: str = "") -> str:
+        """
+        Executes a self-contained Python script to solve a specific, immediate problem 
+        and captures its output. Use this when you do not need a permanent, reusable tool.
+        
+        Args:
+            code: The complete Python script to run. It must print its results to stdout/stderr.
+            description: A short description of what this one-time script does.
+            
+        Returns:
+            str: The stdout and stderr output of the executed script.
+        """
+        console.print(f"\n[bold magenta]⚡ Meta-tool Invoked: Executing One-Time Script...[/bold magenta]")
+        import subprocess
+        temp_path = "one_time_script.py"
+        try:
+            with open(temp_path, "w") as f:
+                f.write(code)
+                
+            console.print(f"  [dim]Saved temporary script to {temp_path}[/dim]")
+            
+            result = subprocess.run(
+                [sys.executable, temp_path],
+                capture_output=True,
+                text=True,
+                timeout=15
+            )
+            
+            output = ""
+            if result.stdout:
+                output += f"STDOUT:\n{result.stdout}\n"
+            if result.stderr:
+                output += f"STDERR:\n{result.stderr}\n"
+            if not output:
+                output = "Script executed successfully with no output."
+                
+            console.print(f"  [bold green]✓ Execution completed with exit code {result.returncode}[/bold green]")
+            return output
+            
+        except Exception as e:
+            console.print(f"  [bold red]✗ Failed to execute script: {str(e)}[/bold red]")
+            return f"Error executing script: {str(e)}"
+        finally:
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except:
+                    pass
             
     def create_and_register_new_tool(self, name: str, code: str, description: str) -> str:
         """
@@ -237,8 +308,11 @@ class SelfEvolvingAgent:
             
             # Send the request to Gemini
             # We must pass system_instruction and tools dynamically
+            system_instruction = (
+                SYSTEM_INSTRUCTION_LONG_TERM if self.mode == "long_term" else SYSTEM_INSTRUCTION_ONE_TIME
+            )
             config = types.GenerateContentConfig(
-                system_instruction=SYSTEM_INSTRUCTION,
+                system_instruction=system_instruction,
                 tools=list(self.active_tools.values()),
                 automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
                 temperature=0.1 # Low temperature for reliable function calling/logic

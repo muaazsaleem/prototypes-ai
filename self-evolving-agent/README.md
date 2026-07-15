@@ -1,65 +1,57 @@
 # 🧬 Gemini 2.5 Self-Evolving AI Agent Prototype
 
-This repository contains a highly interactive, beautifully designed Python prototype demonstrating a **Self-Evolving AI Agent**.
+This repository contains an interactive and beautifully formatted Python prototype demonstrating two distinct paradigms of autonomous AI capability expansion: **One-Time Script Execution** and **Long-Term Dynamic Tool Registration**.
 
-Using **Gemini 2.5 Flash** and the official next-generation **`google-genai`** Python SDK, this agent has the unique ability to **write and register its own tools on the fly** when it encounters tasks it cannot solve with its starting toolset.
+Using **Gemini 2.5 Flash** and the next-generation **`google-genai`** Python SDK, this agent can dynamically write and run custom code to solve tasks beyond its starting capabilities.
 
 ---
 
-## 🚀 How It Works Under the Hood
+## 🚀 Two Distinct Execution Philosophies
 
-The agent starts with a minimal set of pre-defined tools:
-1. `get_current_time()`: Retrieves the current system date/time.
-2. `fetch_webpage_content(url)`: Fetches a snippet of content from a webpage.
-3. `create_and_register_new_tool(name, code, description)`: **The Meta-Tool.**
+The prototype lets you choose between, or compare, two major ways agents expand their capabilities:
 
-### The Evolution Cycle
+### Flow 1: One-Time Script Execution (Disposability-first)
+* **How it works**: The agent is provided a tool called `execute_one_time_script(code)`. When it needs terminal/system capability, it writes a bespoke Python script designed to solve the task directly (e.g. imports `platform` and `os` to fetch OS metadata and files), executes it in a clean environment, and retrieves the results.
+* **Trade-off**: Fast (completed in a single prompt turn), zero-state footprint, but has no API reusability or modular structure.
 
+### Flow 2: Long-Term Tool Registration (Modularity-first)
+* **How it works**: The agent is provided a meta-tool called `create_and_register_new_tool(name, code, description)`. When it needs a capability, it conceptually designs a modular, reusable Python function (e.g. `run_bash_command`), registers it dynamically in the runtime, and then *invokes it with custom parameters* in subsequent steps.
+* **Trade-off**: Highly modular and reusable, fully integrated into Gemini's JSON schema tooling engine, but takes more message round-trips to bootstrap.
+
+---
+
+## 📁 Architectural Lifecycle Comparison
+
+### Flow 1: One-Time Script Execution
 ```
-                   ┌──────────────────────────────┐
-                   │  1. User gives a complex task │
-                   └──────────────┬───────────────┘
-                                  ▼
-                   ┌──────────────────────────────┐
-                   │ 2. Agent checks tool list:    │
-                   │    Realizes it lacks tool X  │
-                   └──────────────┬───────────────┘
-                                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ 3. Agent calls Meta-Tool: 'create_and_register_new_tool'        │
-│    - Generates complete, annotated Python code for tool X.      │
-│    - Saves it dynamically to `tools/X.py`.                       │
-│    - Dynamically loads and imports the new callable function.   │
-│    - Adds the function to the Agent's active tools dictionary.  │
-└────────────────────────────────┬────────────────────────────────┘
-                                 ▼
-                   ┌──────────────────────────────┐
-                   │ 4. Success message returned  │
-                   │    to model context          │
-                   └──────────────┬───────────────┘
-                                  ▼
-                   ┌──────────────────────────────┐
-                   │ 5. Agent immediately calls   │
-                   │    newly registered Tool X   │
-                   └──────────────┬───────────────┘
-                                  ▼
-                   ┌──────────────────────────────┐
-                   │ 6. Agent solves task with X! │
-                   └──────────────────────────────┘
+┌──────────────────────────────┐      ┌────────────────────────────────┐      ┌──────────────────────────────┐
+│  1. User gives complex task  │ ───> │  2. Agent writes bespoke code  │ ───> │  3. Code executes once,      │
+└──────────────────────────────┘      └────────────────────────────────┘      │     returns stdout directly  │
+                                                                              └──────────────┬───────────────┘
+                                                                                             ▼
+                                                                              ┌──────────────────────────────┐
+                                                                              │  4. Agent synthesizes answer │
+                                                                              └──────────────────────────────┘
 ```
 
-When given a challenge that requires terminal operations (e.g., getting OS and CPU info, or listing directory files), the agent:
-1. Realizes it has no terminal tool.
-2. Dynamically generates the Python code for a bash tool (`run_bash_command`).
-3. Saves it to `tools/run_bash_command.py` and registers it in its runtime toolset.
-4. Uses it to query system information.
-5. Successfully outputs the final summary!
+### Flow 2: Long-Term Tool Registration
+```
+┌──────────────────────────────┐      ┌────────────────────────────────┐      ┌──────────────────────────────┐
+│  1. User gives complex task  │ ───> │  2. Agent Realizes Lacks Tool  │ ───> │  3. Calls Meta-tool to write │
+└──────────────────────────────┘      └────────────────────────────────┘      │     reusable Tool (tools/X.py)│
+                                                                              └──────────────┬───────────────┘
+                                                                                             ▼
+┌──────────────────────────────┐      ┌────────────────────────────────┐      ┌──────────────────────────────┐
+│  6. Agent synthesizes answer │ <─── │  5. Agent calls new Tool X     │ <─── │  4. Tool dynamically loaded  │
+│     from execution results   │      │     with custom parameters     │      │     & registered in SDK      │
+└──────────────────────────────┘      └────────────────────────────────┘      └──────────────────────────────┘
+```
 
 ---
 
 ## 🛠️ Installation & Setup
 
-1. **Prerequisites**: Ensure you have Python 3.10+ installed and your virtual environment activated.
+1. **Prerequisites**: Ensure you have Python 3.10+ installed.
 2. **Install dependencies**:
    ```bash
    pip install google-genai rich requests
@@ -74,20 +66,21 @@ When given a challenge that requires terminal operations (e.g., getting OS and C
 
 ## 🏃‍♂️ Running the Agent
 
-To execute the demo and watch the agent evolve and solve the task in real-time, simply run:
+To run the interactive prototype, execute:
 
 ```bash
 python main.py
 ```
 
-### What you will see:
-- A beautifully formatted terminal output (using the `rich` library) showing each step of the agent's thought process, tool generation, dynamic imports, and execution.
-- A new file `tools/run_bash_command.py` created automatically containing the clean, type-hinted, and docstring-documented bash execution tool created by Gemini.
+### Options Available:
+* **Option 1**: Run the One-Time Script Execution Flow.
+* **Option 2**: Run the Long-Term Dynamic Tool Registration Flow.
+* **Option 3**: Run **both** flows sequentially and print a beautiful side-by-side analysis comparing execution time, turn counts, and architectural trade-offs!
 
 ---
 
 ## 📁 File Structure
 
-- `agent.py`: Houses the `SelfEvolvingAgent` runner, history log, manual tool execution loop, and the dynamic import engine.
-- `main.py`: Entrypoint for running the demonstration task.
-- `tools/`: Workspace directory where dynamic tools are written and compiled on the fly.
+- `agent.py`: Houses the `SelfEvolvingAgent` runner supporting dual-mode execution (`one_time` and `long_term`), the console logging engine, and the code-compiler runtime.
+- `main.py`: Interactive entrypoint to choose or compare the execution paradigms.
+- `tools/`: Workspace directory where permanent dynamic tools are written and compiled on the fly.
