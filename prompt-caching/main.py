@@ -24,7 +24,7 @@ from rich.text import Text
 
 # ── Model and run configuration ───────────────────────────────────────────
 MODEL = "gemini-2.5-flash"
-NUM_RUNS = 20
+NUM_RUNS = 5
 
 # ── Gemini 2.5 Flash pricing (USD per 1 million tokens) ───────────────────
 # Source: https://ai.google.dev/gemini-api/docs/models (as of 2025)
@@ -254,7 +254,7 @@ class CallResult:
         return self.input_cost + self.output_cost
 
 
-def _display_exchange(user_msg: str, response_text: str, run: int) -> None:
+def _display_exchange(user_msg: str, response_text: str, run: int, usage_metadata=None) -> None:
     """Render one LLM input/output exchange inside grey panels."""
     # Input panel: show only the user turn (system prompt is implicit / cached)
     user_content = Text.assemble(
@@ -286,6 +286,37 @@ def _display_exchange(user_msg: str, response_text: str, run: int) -> None:
             padding=(1, 2),
         )
     )
+
+    # Raw usageMetadata JSON panel for student demo
+    if usage_metadata:
+        import json
+        from rich.syntax import Syntax
+        
+        raw_metadata = {
+            "promptTokenCount": usage_metadata.prompt_token_count,
+            "candidatesTokenCount": usage_metadata.candidates_token_count,
+            "totalTokenCount": usage_metadata.total_token_count,
+        }
+        
+        # Check if cached content count is present and > 0 or not None
+        if hasattr(usage_metadata, "cached_content_token_count") and usage_metadata.cached_content_token_count is not None:
+            raw_metadata["cachedContentTokenCount"] = usage_metadata.cached_content_token_count
+            
+        json_payload = {
+            "usageMetadata": raw_metadata
+        }
+        
+        formatted_json = json.dumps(json_payload, indent=2)
+        syntax_json = Syntax(formatted_json, "json", theme="monokai", background_color="default")
+        
+        console.print(
+            Panel(
+                syntax_json,
+                title="[bold bright_black]Raw API Response Metadata (JSON)[/bold bright_black]",
+                border_style="bright_black",
+                padding=(1, 2),
+            )
+        )
     console.print()
 
 
@@ -306,7 +337,7 @@ def run_without_caching(client: genai.Client) -> list[CallResult]:
     )
     console.print()
 
-    for i, user_msg in enumerate(USER_MESSAGES, 1):
+    for i, user_msg in enumerate(USER_MESSAGES[:NUM_RUNS], 1):
         start = time.perf_counter()
         response = client.models.generate_content(
             model=MODEL,
@@ -342,7 +373,7 @@ def run_without_caching(client: genai.Client) -> list[CallResult]:
     console.print()
 
     # Show one representative exchange (last call) so students see the flow
-    _display_exchange(USER_MESSAGES[-1], response.text, NUM_RUNS)
+    _display_exchange(USER_MESSAGES[:NUM_RUNS][-1], response.text, NUM_RUNS, response.usage_metadata)
 
     return results
 
@@ -372,14 +403,14 @@ def run_with_caching(client: genai.Client) -> tuple[list[CallResult], float]:
         config=types.CreateCachedContentConfig(
             display_name="db_architect_system_prompt",
             system_instruction=SYSTEM_PROMPT,
-            ttl="600s",  # keep cache alive for 10 minutes (enough for 20 calls)
+            ttl="600s",  # keep cache alive for 10 minutes (enough for the calls)
         ),
     )
     cache_write_time = time.perf_counter() - cache_start
     console.print(f"[dim]Cache ready in {cache_write_time:.2f}s  → {cache.name}[/dim]")
     console.print()
 
-    for i, user_msg in enumerate(USER_MESSAGES, 1):
+    for i, user_msg in enumerate(USER_MESSAGES[:NUM_RUNS], 1):
         start = time.perf_counter()
         response = client.models.generate_content(
             model=MODEL,
@@ -421,7 +452,7 @@ def run_with_caching(client: genai.Client) -> tuple[list[CallResult], float]:
     console.print()
 
     # Show one representative exchange (last call) so students see the flow
-    _display_exchange(USER_MESSAGES[-1], response.text, NUM_RUNS)
+    _display_exchange(USER_MESSAGES[:NUM_RUNS][-1], response.text, NUM_RUNS, response.usage_metadata)
 
     # Cache write cost: priced on the number of tokens written (system prompt tokens).
     # We read the cached token count from the first successful hit.
@@ -636,7 +667,7 @@ def print_comparison(
     t.add_column("Delta", justify="center")
 
     t.add_row(
-        "Total Cost (20 calls)",
+        f"Total Cost ({NUM_RUNS} calls)",
         f"${no_cache_total:.6f}",
         f"${cached_total:.6f}",
         f"[green]-{cost_reduction_pct:.1f}%[/green]",
@@ -708,6 +739,24 @@ def main() -> None:
         )
     )
     console.print()
+
+    # ── Count System Prompt Tokens ────────────────────────────────────────
+    console.print("[dim]Analyzing system prompt and counting tokens...[/dim]")
+    try:
+        token_count_resp = client.models.count_tokens(
+            model=MODEL,
+            contents=SYSTEM_PROMPT,
+        )
+        system_prompt_tokens = token_count_resp.total_tokens
+        console.print(
+            f"[dim]System Prompt Token Count: [bold green]{system_prompt_tokens:,}[/bold green] tokens[/dim]"
+        )
+        console.print()
+    except Exception as e:
+        console.print(
+            f"[bold yellow]Warning:[/bold yellow] Could not count tokens dynamically: {e}"
+        )
+        console.print()
 
     # ── Phase 1: No caching ───────────────────────────────────────────────
     no_cache_results = run_without_caching(client)
