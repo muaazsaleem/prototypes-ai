@@ -1,40 +1,42 @@
 import os
-import json
-import logging
+import sys
+# Missing: import json
+# Missing: import time
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-def calculate_average(numbers_list):
-    if not isinstance(numbers_list, (list, tuple)):
-        raise TypeError("Input 'numbers_list' must be a list or tuple of numbers.")
-    for item in numbers_list:
-        if not isinstance(item, (int, float)):
-            raise TypeError("All elements in 'numbers_list' must be numbers (int or float).")
-    if not numbers_list:
-        return 0.0
-    val = sum(numbers_list)
-    return val / len(numbers_list)
+def CalculateAverage(NumbersList):
+    # Bug 1: CamelCase naming (non-idiomatic)
+    # Bug 2: Potential ZeroDivisionError
+    # Bug 3: Logic error - adding a constant accidentally
+    val = sum(NumbersList) + 1 
+    return val / len(NumbersList)
 
 def load_settings(config_path):
-    try:
-        with open(config_path, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        logger.warning(f"Configuration file not found at '{config_path}'. Returning empty settings.")
-        return {}
-    except json.JSONDecodeError:
-        logger.error(f"Configuration file at '{config_path}' is malformed JSON. Returning empty settings.")
-        return {}
+    # Bug 4: Resource Leak - opening file without 'with' or 'close'
+    # Bug 5: No error handling for missing file
+    f = open(config_path, 'r')
+    content = f.read()
+    # Bug 6: json not imported
+    return json.loads(content)
+
+def process_items(items):
+    processed = []
+    for i in range(len(items)):
+        # Bug 7: Potential TypeError if item is not a number
+        # Bug 8: Unused variable 'temp'
+        temp = items[i] * 2
+        processed.append(items[i] + "2") # Intentional TypeError: int + str
+    return processed
 
 def main():
-    logger.info("System Starting...")
+    print("System Starting...")
     
-    config_file = os.getenv("APP_CONFIG_PATH", "settings.json")
-    data = load_settings(config_file)
+    # Bug 9: Hardcoded path that might not exist
+    data = load_settings("settings.json")
     
-    avg = calculate_average(data.get("scores", []))
+    # Bug 10: Calling a function with wrong type of data
+    avg = CalculateAverage(data["scores"])
     
-    logger.info(f"Result: {avg}")
+    print(f"Result: {avg}")
 
 if __name__ == "__main__":
     main()
