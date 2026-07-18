@@ -1,40 +1,37 @@
-import os
 import sys
-# Missing: import json
-# Missing: import time
+import json
+DEFAULT_CONFIG_PATH = "settings.json"
 
-def CalculateAverage(NumbersList):
-    # Bug 1: CamelCase naming (non-idiomatic)
-    # Bug 2: Potential ZeroDivisionError
-    # Bug 3: Logic error - adding a constant accidentally
-    val = sum(NumbersList) + 1 
-    return val / len(NumbersList)
+def calculate_average(numbers_list):
+    if not numbers_list:
+        return 0.0 # Return 0.0 for an empty list to prevent ZeroDivisionError
+    return sum(numbers_list) / len(numbers_list)
 
 def load_settings(config_path):
-    # Bug 4: Resource Leak - opening file without 'with' or 'close'
-    # Bug 5: No error handling for missing file
-    f = open(config_path, 'r')
-    content = f.read()
-    # Bug 6: json not imported
-    return json.loads(content)
+    try:
+        with open(config_path, 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"Error: Configuration file '{config_path}' not found. Returning default settings.", file=sys.stderr)
+        return {"scores": []}
+    except json.JSONDecodeError:
+        print(f"Error: Configuration file '{config_path}' contains invalid JSON. Returning default settings.", file=sys.stderr)
+        return {"scores": []}
 
 def process_items(items):
-    processed = []
-    for i in range(len(items)):
-        # Bug 7: Potential TypeError if item is not a number
-        # Bug 8: Unused variable 'temp'
-        temp = items[i] * 2
-        processed.append(items[i] + "2") # Intentional TypeError: int + str
-    return processed
+    return [item + 2 for item in items if isinstance(item, (int, float))]
 
 def main():
     print("System Starting...")
     
-    # Bug 9: Hardcoded path that might not exist
-    data = load_settings("settings.json")
+    if len(sys.argv) > 2:
+        print("Usage: python buggy_app.py [config_path]", file=sys.stderr)
+        sys.exit(1)
+    config_path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_CONFIG_PATH
+    data = load_settings(config_path)
     
-    # Bug 10: Calling a function with wrong type of data
-    avg = CalculateAverage(data["scores"])
+    processed_scores = process_items(data.get("scores", []))
+    avg = calculate_average(processed_scores)
     
     print(f"Result: {avg}")
 

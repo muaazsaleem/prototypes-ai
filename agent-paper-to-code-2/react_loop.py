@@ -59,6 +59,7 @@ core contribution of the paper.  The code must be saved to: {output_path}
 You operate in a Reason-Act loop.  At every step you MUST:
 1. Write a short THOUGHT explaining what you will do and why.
 2. Call exactly ONE tool to act on that thought.
+3. Run until code works.
 
 Available tools:
 - `extract_section`  -- pull a named section from the paper for closer inspection
