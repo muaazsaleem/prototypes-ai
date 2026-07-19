@@ -1,8 +1,0 @@
-google-genai
-numpy
-matplotlib
-scikit-learn
-rich
-black
-tqdm
-pandas

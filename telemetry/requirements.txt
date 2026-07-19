@@ -1,4 +1,0 @@
-google-genai>=1.0.0
-langfuse>=4.0.0
-rich>=13.0.0
-black>=24.0.0

@@ -1,4 +1,0 @@
-google-generativeai
-rich
-black
-ddgs
