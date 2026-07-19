@@ -2,63 +2,7 @@
 
 The repository contains a set of Applied AI Prototypes as part of [Arpit's Applied AI Masterclass](https://arpitbhayani.me/applied-ai).
 
-## Prototypes
-
-Here is the list of Applied AI Prototypes available in this repository:
-
-- [Agent Paper to Code](./agent-paper-to-code)
-- [Agent Paper to Code 2](./agent-paper-to-code-2)
-- [Agent Paper to Code 3](./agent-paper-to-code-3)
-- [Checkpoint Replay](./checkpoint-replay)
-- [Code Patcher](./code-patcher)
-- [CoT vs Direct](./cot-vs-direct)
-- [CoT vs Few vs Direct](./cot-vs-few-vs-direct)
-- [Critic Refiner](./critic-refiner)
-- [Cross Encoders](./cross-encoders)
-- [Deep Research](./deep-research)
-- [Edit Verify Loop](./edit-verify-loop)
-- [Evals Development](./evals-development)
-- [Evolving Memory](./evolving-memory)
-- [Few-Shot Self-Consistency](./few-shot-self-consistency)
-- [Filesystem Context](./filesystem-context)
-- [Gemini Multiagent Subprocess](./gemini-multiagent-subprocess)
-- [HITL](./hitl)
-- [Latency Budget Breakdown](./latency-budget-breakdown)
-- [LLM as Judge](./llm-as-judge)
-- [Memory Persistent](./memory-persistent)
-- [Metadata Filtering](./metadata-filtering)
-- [Native Structured RAG](./native-structured-rag)
-- [Non-Deterministic](./non-deterministic)
-- [Observability](./observability)
-- [Observe Think Act Loop](./observe-think-act-loop)
-- [Orchestrator vs Specialist](./orchestrator-vs-specialist)
-- [Parallel Tool Calls](./parallel-tool-calls)
-- [Prompt Caching](./prompt-caching)
-- [Prompt Injection](./prompt-injection)
-- [Prompt Regression](./prompt-regression)
-- [Query Rewrite HyDE](./query-rewrite-hyde)
-- [RAG Chunking Strategy](./rag-chunking-strategy)
-- [RAG Failure Modes](./rag-failure-modes)
-- [Ragas Regression Test](./ragas-regression-test)
-- [ReAct](./react)
-- [Reasoning Models](./reasoning-models)
-- [Reflexion](./reflexion)
-- [RRF](./rrf)
-- [Sandbox](./sandbox)
-- [Search Agent](./search-agent)
-- [Self-Evolving Agent](./self-evolving-agent)
-- [Semantic Caching](./semantic-caching)
-- [Skill Executor](./skill-executor)
-- [Sycophancy](./sycophancy)
-- [System Prompt Leak](./system-prompt-leak)
-- [Telemetry](./telemetry)
-- [Token Smuggling](./token-smuggling)
-- [Token Streaming](./token-streaming)
-- [Tool Call Error Injection](./tool-call-error-injection)
-- [Tool Schema Calibration](./tool-schema-calibration)
-- [Working Memory](./working-memory)
-
----
+Note: Given that the curriculum evolves, some of these prototypes might not be covered, and some new topics might be covered instead. However, this will remain an exhaustive set of prototypes. Please look at the main [course page](https://arpitbhayani.me/applied-ai) to see the topics that will be covered during the course.
 
 # Arpit's Applied AI Masterclass
 
