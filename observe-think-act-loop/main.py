@@ -2,18 +2,24 @@ import os
 import subprocess
 import sys
 import textwrap
-from google import genai
+from dotenv import load_dotenv
+from openai import OpenAI
 from rich.console import Console, Group
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.text import Text
+
+# Load environment variables (e.g. OPENROUTER_API_KEY) from the nearest .env,
+# walking up from this file so the repo-root .env is picked up.
+load_dotenv()
 
 # Initialize Rich Console
 console = Console()
 
 # Configuration
 FILE_TO_FIX = "broken_code.py"
-MODEL_ID = "gemini-2.5-flash"
+MODEL_ID = "google/gemini-2.5-flash"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 def show_header():
     console.print(
@@ -71,8 +77,11 @@ def think(code, error):
         )
     )
 
-    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-    
+    client = OpenAI(
+        base_url=OPENROUTER_BASE_URL,
+        api_key=os.environ.get("OPENROUTER_API_KEY"),
+    )
+
     prompt = f"""
     You are an expert Python debugger. 
     The following code is broken:
@@ -90,12 +99,13 @@ def think(code, error):
     Output ONLY the code inside triple backticks. Do not provide explanations.
     """
     
-    response = client.models.generate_content(
+    response = client.chat.completions.create(
         model=MODEL_ID,
-        contents=prompt
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=4096,
     )
-    
-    fixed_code = response.text
+
+    fixed_code = response.choices[0].message.content
     if "```python" in fixed_code:
         fixed_code = fixed_code.split("```python")[1].split("```")[0].strip()
     elif "```" in fixed_code:
@@ -158,9 +168,9 @@ def run_ota_loop():
     console.print("\n[bold red]Limits reached. Could not fix the code in 3 iterations.[/bold red]")
 
 if __name__ == "__main__":
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
-        console.print("[bold red]Error:[/bold red] GEMINI_API_KEY environment variable not set.")
+        console.print("[bold red]Error:[/bold red] OPENROUTER_API_KEY environment variable not set.")
         sys.exit(1)
     
     try:

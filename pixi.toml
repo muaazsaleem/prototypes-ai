@@ -1,0 +1,24 @@
+[workspace]
+name = "prototypes-ai"
+version = "0.1.0"
+description = "Applied AI prototypes — pixi-managed, one environment per prototype"
+channels = ["conda-forge"]
+platforms = ["osx-arm64"]
+
+[dependencies]
+python = ">=3.11"
+
+# ---------------------------------------------------------------------------
+# observe-think-act-loop — OTA Fix-It Debugger
+# Uses OpenRouter (OpenAI-compatible API), so the LLM client dep is `openai`.
+# ---------------------------------------------------------------------------
+[feature.ota.dependencies]
+rich = "*"
+openai = ">=1.0"
+python-dotenv = "*"
+
+[feature.ota.tasks]
+ota = { cmd = "python main.py", cwd = "observe-think-act-loop" }
+
+[environments]
+ota = ["ota"]

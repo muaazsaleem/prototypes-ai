@@ -1,11 +1,11 @@
 # OTA Fix-It Debugger Prototype
 
-This prototype demonstrates a simple **Observe-Think-Act (OTA)** loop using the Google Gemini API.
+This prototype demonstrates a simple **Observe-Think-Act (OTA)** loop using an LLM via [OpenRouter](https://openrouter.ai) (OpenAI-compatible API).
 
 ## How it works
 
 1.  **Observe**: The debugger runs `broken_code.py` and captures the stack trace if it fails.
-2.  **Think**: It sends the broken code and the error message to Gemini, asking for a fix.
+2.  **Think**: It sends the broken code and the error message to the model, asking for a fix.
 3.  **Act**: It applies the suggested fix back to `broken_code.py` and repeats the loop until the code runs successfully or the maximum iterations are reached.
 
 ## Files
@@ -15,19 +15,21 @@ This prototype demonstrates a simple **Observe-Think-Act (OTA)** loop using the 
 
 ## Setup
 
-1.  **Install dependencies**:
+This prototype is managed by [pixi](https://pixi.sh). From the repo root:
+
+1.  **Install dependencies** (creates the `ota` environment):
     ```bash
-    pip install -U google-genai rich
+    pixi install -e ota
     ```
 
 2.  **Set your API Key**:
     ```bash
-    export GEMINI_API_KEY="your_api_key_here"
+    export OPENROUTER_API_KEY="your_api_key_here"
     ```
 
 3.  **Run the debugger**:
     ```bash
-    python ota_debugger.py
+    pixi run ota
     ```
 
 ## Learning Points
